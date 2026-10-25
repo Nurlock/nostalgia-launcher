@@ -75,18 +75,6 @@ def test_is_user_managed_addons_and_dlls():
     assert ownership.is_user_managed("custom.dll", {"custom.dll"})
 
 
-def test_server_paths_normalize_and_reject_unsafe():
-    import sys
-
-    got = ownership.server_paths_from_list(
-        ["Data/Patch-A.MPQ", "../evil", "", "Data\\patch-b.mpq"]
-    )
-    if sys.platform in ("win32", "darwin"):
-        assert got == {"data/patch-a.mpq", "data/patch-b.mpq"}
-    else:
-        assert got == {"Data/Patch-A.MPQ", "Data/patch-b.mpq"}
-
-
 def test_user_paths_from_mixed_records():
     records = [
         {"installed_files": ["custom.dll", "../evil"]},

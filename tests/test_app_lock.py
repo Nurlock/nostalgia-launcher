@@ -51,6 +51,7 @@ def test_lock_file_sits_beside_state_file():
 def test_acquire_release_reacquire(tmp_path):
     state = str(tmp_path / "state.json")
     app_lock.acquire_store_lock(state)
+    assert app_lock._ATEXIT_REGISTERED is True
     # Idempotent within the process:
     app_lock.acquire_store_lock(state)
     app_lock.release_store_lock()

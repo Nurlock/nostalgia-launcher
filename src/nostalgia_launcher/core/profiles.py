@@ -280,6 +280,13 @@ def delete(name: str) -> str:
         if idx["active"] == name:
             idx["active"] = idx["order"][0] if idx["order"] else ""
         save_index(idx)
+        if _ACTIVE is not None and _ACTIVE.name == name:
+            try:
+                from . import app_lock
+
+                app_lock.release_store_lock()
+            except Exception:
+                pass
         try:
             shutil.rmtree(profile_root(name))
         except OSError as e:

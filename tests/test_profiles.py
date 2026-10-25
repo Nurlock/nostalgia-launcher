@@ -235,6 +235,19 @@ def test_delete_active_falls_back_to_first_remaining(prof_home):
     assert profiles.resolve().name == "a"
 
 
+def test_delete_active_releases_store_lock(prof_home):
+    from nostalgia_launcher.core import app_lock
+
+    prof, err = profiles.create("active_to_delete")
+    assert err == ""
+    profiles.activate(prof)
+    app_lock.acquire_store_lock(prof.state_path())
+    assert app_lock._LOCK is not None
+
+    assert profiles.delete("active_to_delete") == ""
+    assert app_lock._LOCK is None
+
+
 def test_delete_last_leaves_empty_registry(prof_home):
     profiles.create("only")
     profiles.set_active("only")

@@ -831,7 +831,7 @@ class QmlNostalgiaLauncherApp:
                 return err
             if was_active:
                 target = profiles.load_index()["active"]
-                if target and not switch_profile(target):
+                if not switch_profile(target):
                     return "Restart the launcher manually to switch."
             return ""
 

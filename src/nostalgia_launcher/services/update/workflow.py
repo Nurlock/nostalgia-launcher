@@ -4,8 +4,6 @@ Orchestrator facade: ``VerifyWorker``/``UpdateWorker`` keep their public
 API (constructor, ``run()``, ``cancel()``) and delegate each phase to
 the stage modules:
 
-- :mod:`stages_initial` — one-off base acquisition (has_exe check,
-  fallback availability);
 - :mod:`stages_manifest` — manifest-overlay path split/tag helpers;
 - :mod:`stages_torrent` — incremental torrent policy;
 - :mod:`stages_static` — server-bundled registry entry paths;
@@ -1100,9 +1098,8 @@ class UpdateWorker(WorkerBase):
     def run_initial(self) -> None:
         """Initial acquisition: full base-client download, once.
 
-        Precondition: no playable client yet (the caller decides —
-        ``stages_initial.has_playable_client``). BitTorrent full
-        download first, single-zip HTTP fallback second. No stale-set
+        Precondition: no playable client yet (the caller decides).
+        BitTorrent full download first, single-zip HTTP fallback second. No stale-set
         logic, no incremental policy: this path always fetches the
         whole base client.
         """

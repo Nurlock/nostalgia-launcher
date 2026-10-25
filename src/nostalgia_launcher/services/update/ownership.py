@@ -46,16 +46,6 @@ def _valid(path: object) -> str | None:
     return _norm(path.strip())
 
 
-def server_paths_from_list(paths: list) -> set[str]:
-    """Normalized server-owned set from a raw path list."""
-    owned: set[str] = set()
-    for p in paths or []:
-        norm = _valid(p)
-        if norm is not None:
-            owned.add(norm)
-    return owned
-
-
 def server_paths_from_manifest(entries: list) -> set[str]:
     """Normalized server-owned set from manifest snapshot entries."""
     owned: set[str] = set()

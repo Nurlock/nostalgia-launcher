@@ -432,29 +432,6 @@ def test_scan_unknown_mods_claims_bundled_server_dlls(tmp_path, monkeypatch):
     assert mods.scan_unknown_mods(str(client), []) == ["mystery.dll"]
 
 
-def test_remove_unknown_mod_removes_line_and_file(tmp_path):
-    client = tmp_path / "client"
-    client.mkdir()
-    (client / "dlls.txt").write_text("Keep.dll\nmystery.dll\n")
-    (client / "mystery.dll").write_bytes(b"MZ")
-    mods.remove_unknown_mod(str(client), "mystery.dll")
-    assert (client / "dlls.txt").read_text().splitlines() == ["Keep.dll"]
-    assert not (client / "mystery.dll").exists()
-
-
-def test_remove_unknown_mod_never_deletes_outside_client(tmp_path):
-    """A traversal entry in mod-written dlls.txt must not delete files
-    outside the client dir (the dlls.txt line itself is still dropped)."""
-    client = tmp_path / "client"
-    client.mkdir()
-    victim = tmp_path / "victim.dll"
-    victim.write_bytes(b"MZ")
-    (client / "dlls.txt").write_text("../victim.dll\n")
-    mods.remove_unknown_mod(str(client), "../victim.dll")
-    assert victim.exists()
-    assert not (client / "dlls.txt").exists()
-
-
 def test_add_dll_rejects_traversal_entry(tmp_path):
     client = tmp_path / "client"
     client.mkdir()

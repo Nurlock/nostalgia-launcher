@@ -27,7 +27,6 @@ from ..services.self_update import (
     fetch_updater_latest_tag,
     updater_update_available,
 )
-from ..services.update.stages_initial import fallback_available
 from ..services.update.workflow import (
     UpdateWorker,
     VerifyWorker,
@@ -107,6 +106,10 @@ def can_skip_verification(
 # Cap on captured child-process (umu/Wine, WoW.exe) lines per run — a chatty
 # Wine session must not flood the session buffer, the log file and the UI.
 _CHILD_OUTPUT_MAX_LINES = 800
+
+
+def _fallback_available(source: object) -> bool:
+    return bool(source is not None and getattr(source, "fallback_url", ""))
 
 
 class UpdateController:
@@ -316,7 +319,7 @@ class UpdateController:
         # run_initial is torrent-first/fallback-second; the gate must
         # match so an HTTP-only server still reaches first install.
         src = _download_source()
-        fallback = fallback_available(src)
+        fallback = _fallback_available(src)
         if not (torrent_recovery_available() or fallback):
             self._dispatcher.post(
                 LogMessage(
@@ -369,18 +372,6 @@ class UpdateController:
             self._dispatcher.unsubscribe(self._on_event)
         except Exception:
             pass
-
-    def read_client_version(self) -> str:
-        """Declarative client version, cached on state.
-
-        Post-offset removal this no longer sniffs ``WoW.exe`` on disk;
-        the value comes from the server-pinned ``launcher.client_version()``
-        (``1.12.1`` / ``2.4.3`` / ``3.3.5a``).
-        """
-        from ..core import launcher as _launcher
-
-        self.state.client_version = _launcher.client_version()
-        return self.state.client_version
 
     def check_updater_update(self):
         """Background daily check of the updater's own GitHub releases; sets

@@ -147,7 +147,7 @@ class LauncherConfig:
     # Pinned game executable filename (no path) for servers whose launch
     # binary is not WoW.exe. Declarative only — no exe sniffing.
     client_executable: str = "WoW.exe"
-    # Pinned client version for this server profile (subset of mpq.SUPPORTED_VERSIONS).
+    # Pinned client version for this server profile (ALLOWED_CLIENT_VERSIONS: 1.12.1 / 2.4.3 / 3.3.5a).
     client_version: str = "1.12.1"
     embedded_mods: list[dict] = field(default_factory=list)
     embedded_addons: list[dict] = field(default_factory=list)

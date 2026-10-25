@@ -3,13 +3,12 @@
 ``workflow`` is the orchestrator facade (``VerifyWorker`` /
 ``UpdateWorker`` keep their public API); the stage modules hold the
 per-phase logic: ``ownership`` (server-base vs community-overlay),
-``stages_initial`` (one-off acquisition), ``stages_manifest``,
-``stages_static`` and ``stages_torrent`` (incremental strategies).
+``stages_manifest``, ``stages_static`` and ``stages_torrent``
+(incremental strategies).
 """
 
 from . import (
     ownership,
-    stages_initial,
     stages_manifest,
     stages_static,
     stages_torrent,
@@ -34,7 +33,6 @@ __all__ = [
     "is_available",
     "ownership",
     "recovery_available",
-    "stages_initial",
     "stages_manifest",
     "stages_static",
     "stages_torrent",

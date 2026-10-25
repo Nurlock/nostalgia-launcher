@@ -316,41 +316,6 @@ def scan_unknown_mods(client_dir: str, registry: list) -> list:
     return sorted(n for n in read_dlls_entries(client_dir) if n not in known)
 
 
-def remove_unknown_mod(client_dir: str, name: str):
-    """Uninstall an untracked mod straight from the filesystem: drop its
-    dlls.txt line and delete the matching file when one exists."""
-    name = name.strip()
-    if not name:
-        return
-    path = _dlls_txt_path(client_dir)
-    if os.path.exists(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                content = f.read()
-        except (OSError, UnicodeDecodeError):
-            return
-        lines = [
-            line
-            for line in content.splitlines()
-            if line.strip().lower() != name.lower()
-        ]
-        try:
-            if lines:
-                _atomic_write(path, "\n".join(lines) + "\n")
-            else:
-                os.remove(path)
-        except OSError as e:
-            log(f"  Could not update dlls.txt: {e}", "err")
-            return
-    # dlls.txt is mod-written, so its entries are untrusted: never resolve
-    # one to a path outside client_dir.
-    if safe_relpath(name):
-        full = os.path.join(client_dir, name)
-        if os.path.exists(full):
-            os.remove(full)
-            log(f"  Removed {name}")
-
-
 def add_dll(client_dir: str, name: str):
     path = _dlls_txt_path(client_dir)
     lines = []

@@ -106,27 +106,6 @@ def _catalog_summary(
     return " + ".join(parts) if parts else "not configured"
 
 
-def _manifest_route_counts(config) -> tuple[int, int]:
-    """(asset_count, mod_count) of manifest routes in the config.
-
-    Network-free: counts the declared ``routes`` targets, so the trust
-    panel lists what the manifest *would* manage before anything is
-    fetched."""
-    block = getattr(config, "download_manifest", None)
-    if not isinstance(block, dict):
-        return 0, 0
-    routes = block.get("routes")
-    if not isinstance(routes, list):
-        return 0, 0
-    assets = sum(
-        1 for r in routes if isinstance(r, dict) and r.get("as") == "asset"
-    )
-    mods = sum(
-        1 for r in routes if isinstance(r, dict) and r.get("as") == "mod"
-    )
-    return assets, mods
-
-
 def _manifest_executable_targets(config) -> list[str]:
     """Manifest paths ending in executable types (.dll/.exe/.so/.dylib).
 

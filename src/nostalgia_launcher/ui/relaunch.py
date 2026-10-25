@@ -38,7 +38,8 @@ def relaunch_with_profile(name: str) -> bool:
         if arg.startswith("--profile="):
             continue
         argv.append(arg)
-    argv += ["--profile", name]
+    if name:
+        argv += ["--profile", name]
 
     if getattr(sys, "frozen", False):
         if sys.platform == "darwin":
@@ -67,7 +68,8 @@ def switch_profile(name: str) -> bool:
     quits). On failure the pointer stays persisted and this logs the
     manual-restart instruction — callers surface it in their own UI.
     """
-    profiles.set_active(name)
+    if name:
+        profiles.set_active(name)
     if relaunch_with_profile(name):
         QCoreApplication.quit()
         return True

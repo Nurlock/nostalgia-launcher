@@ -2,7 +2,6 @@
 
 from nostalgia_launcher.core import launcher
 from nostalgia_launcher.core.trust import (
-    _manifest_route_counts,
     trust_capabilities,
     trust_hosts,
 )
@@ -48,11 +47,6 @@ def _manifest_config():
             }
         }
     )
-
-
-def test_manifest_route_counts_by_target():
-    cfg = _manifest_config()
-    assert _manifest_route_counts(cfg) == (2, 1)
 
 
 def test_trust_hosts_includes_manifest_host():

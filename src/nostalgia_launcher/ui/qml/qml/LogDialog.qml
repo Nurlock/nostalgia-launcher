@@ -75,7 +75,7 @@ ApplicationWindow {
             Button {
                 text: "Refresh"
                 flat: true
-                onClicked: logModel.refresh()
+                onClicked: if (logModel) logModel.refresh()
             }
             Button {
                 objectName: "qmlLogClose"
@@ -97,7 +97,7 @@ ApplicationWindow {
             id: logList
             objectName: "qmlLogList"
             width: parent.width
-            model: logModel.lines
+            model: logModel ? logModel.lines : []
             delegate: Label {
                 width: ListView.view.width - 16
                 text: modelData

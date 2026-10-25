@@ -83,11 +83,11 @@ ColumnLayout {
         Layout.rightMargin: 16
         Layout.topMargin: 12
         spacing: 8
-        visible: !root.contentModel.scanning && root.contentModel.emptyVisible
+        visible: root.contentModel ? (!root.contentModel.scanning && root.contentModel.emptyVisible) : false
         Label {
             objectName: "qmlContentEmpty"
             Layout.fillWidth: true
-            text: root.contentModel.emptyText
+            text: root.contentModel ? root.contentModel.emptyText : ""
             font.pointSize: 10
             color: appTheme.colors["C_TEXT_DIM"]
             wrapMode: Text.WordWrap
@@ -104,7 +104,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.topMargin: 32
         spacing: 12
-        visible: root.contentModel.scanning
+        visible: root.contentModel ? root.contentModel.scanning : false
         BusyIndicator {
             Layout.alignment: Qt.AlignHCenter
             running: parent.visible
@@ -207,10 +207,10 @@ ColumnLayout {
         spacing: 8
         Button {
             objectName: "qmlContentApply"
-            text: root.contentModel.busy ? "Uninstalling…" : (root.contentModel.pendingCount > 0 ? "Uninstall (" + root.contentModel.pendingCount + ")" : "Uninstall")
-            enabled: !root.contentModel.busy && root.contentModel.pendingCount > 0
+            text: root.contentModel ? (root.contentModel.busy ? "Uninstalling…" : (root.contentModel.pendingCount > 0 ? "Uninstall (" + root.contentModel.pendingCount + ")" : "Uninstall")) : "Uninstall"
+            enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.pendingCount > 0) : false
             highlighted: true
-            onClicked: root.contentModel.applyAll()
+            onClicked: if (root.contentModel) root.contentModel.applyAll()
         }
         Item { Layout.fillWidth: true }
     }

@@ -38,8 +38,8 @@ ColumnLayout {
                 id: typeCombo
                 objectName: "qmlCustomModType"
                 Layout.fillWidth: true
-                model: customModModel.modTypes
-                onCurrentTextChanged: customModModel.setField("modType", currentText)
+                model: customModModel ? customModModel.modTypes : []
+                onCurrentTextChanged: if (customModModel) customModModel.setField("modType", currentText)
             }
             Field {
                 caption: "GAME EXECUTABLE (relative to the game folder)"
@@ -58,8 +58,8 @@ ColumnLayout {
                 id: kindCombo
                 objectName: "qmlCustomModKind"
                 Layout.fillWidth: true
-                model: customModModel.sourceKinds
-                onCurrentTextChanged: customModModel.setField("kind", currentText)
+                model: customModModel ? customModModel.sourceKinds : []
+                onCurrentTextChanged: if (customModModel) customModModel.setField("kind", currentText)
             }
             Field { caption: "OWNER"; visible: kindCombo.currentText === "github_release" || kindCombo.currentText === "codeberg_release"; onEdit: (t) => customModModel.setField("owner", t) }
             Field { caption: "REPOSITORY"; visible: kindCombo.currentText === "github_release" || kindCombo.currentText === "codeberg_release"; onEdit: (t) => customModModel.setField("repo", t) }
@@ -100,8 +100,8 @@ ColumnLayout {
             Label {
                 objectName: "qmlCustomModError"
                 Layout.fillWidth: true
-                visible: customModModel.errorText !== ""
-                text: customModModel.errorText
+                visible: customModModel ? customModModel.errorText !== "" : false
+                text: customModModel ? customModModel.errorText : ""
                 color: appTheme.colors["C_ERR"]
                 wrapMode: Text.WordWrap
             }

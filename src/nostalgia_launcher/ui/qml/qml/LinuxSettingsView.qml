@@ -66,7 +66,7 @@ Dialog {
             Label {
                 objectName: "qmlLinuxUmuHint"
                 Layout.fillWidth: true
-                text: linuxModel.umuHint
+                text: linuxModel ? linuxModel.umuHint : ""
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT_DIM"]
                 wrapMode: Text.WordWrap
@@ -85,8 +85,8 @@ Dialog {
                     objectName: "qmlLinuxProton"
                     Layout.fillWidth: true
                     editable: true
-                    model: linuxModel.protonOptions
-                    currentIndex: Math.max(0, find(linuxModel.proton))
+                    model: linuxModel ? linuxModel.protonOptions : []
+                    currentIndex: linuxModel ? Math.max(0, find(linuxModel.proton)) : 0
                 }
                 Button {
                     text: "Apply"
@@ -106,8 +106,8 @@ Dialog {
                     id: rendererCombo
                     objectName: "qmlLinuxRenderer"
                     Layout.fillWidth: true
-                    model: linuxModel.rendererOptions
-                    currentIndex: Math.max(0, find(linuxModel.renderer))
+                    model: linuxModel ? linuxModel.rendererOptions : []
+                    currentIndex: linuxModel ? Math.max(0, find(linuxModel.renderer)) : 0
                 }
                 Button {
                     text: "Apply"
@@ -116,13 +116,13 @@ Dialog {
             }
             CheckBox {
                 text: "Client-folder DXVK (skip Proton's built-in)"
-                checked: linuxModel.dxvk
+                checked: linuxModel ? linuxModel.dxvk : false
                 onToggled: linuxModel.setDxvk(checked)
             }
             CheckBox {
                 text: "GameMode"
-                enabled: linuxModel.gamemodeAvail
-                checked: linuxModel.gamemode && linuxModel.gamemodeAvail
+                enabled: linuxModel ? linuxModel.gamemodeAvail : false
+                checked: linuxModel ? (linuxModel.gamemode && linuxModel.gamemodeAvail) : false
                 onToggled: linuxModel.setGamemode(checked)
             }
             Label {
@@ -130,13 +130,13 @@ Dialog {
                 text: "gamemoderun not found — install GameMode to enable."
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT_DIM"]
-                visible: !linuxModel.gamemodeAvail
+                visible: linuxModel ? !linuxModel.gamemodeAvail : false
                 wrapMode: Text.WordWrap
             }
             CheckBox {
                 text: "Wayland backend"
-                enabled: linuxModel.waylandAvail
-                checked: linuxModel.wayland && linuxModel.waylandAvail
+                enabled: linuxModel ? linuxModel.waylandAvail : false
+                checked: linuxModel ? (linuxModel.wayland && linuxModel.waylandAvail) : false
                 onToggled: linuxModel.setWayland(checked)
             }
             Label {
@@ -144,7 +144,7 @@ Dialog {
                 text: "Not running on a Wayland session."
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT_DIM"]
-                visible: !linuxModel.waylandAvail
+                visible: linuxModel ? !linuxModel.waylandAvail : false
                 wrapMode: Text.WordWrap
             }
             Label {
@@ -159,7 +159,7 @@ Dialog {
                     Accessible.name: "GAMEID"
                     id: gameIdField
                     Layout.fillWidth: true
-                    text: linuxModel.gameId
+                    text: linuxModel ? linuxModel.gameId : ""
                     font.family: "monospace"
                 }
                 Button {
@@ -179,7 +179,7 @@ Dialog {
                     Accessible.name: "umu-run"
                     id: umuPathField
                     Layout.fillWidth: true
-                    text: linuxModel.umuPath
+                    text: linuxModel ? linuxModel.umuPath : ""
                     placeholderText: "auto-detect on PATH"
                     font.family: "monospace"
                 }

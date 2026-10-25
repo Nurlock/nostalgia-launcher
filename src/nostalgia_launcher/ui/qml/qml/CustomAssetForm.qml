@@ -44,8 +44,8 @@ ColumnLayout {
             Label {
                 objectName: "qmlCustomAssetError"
                 Layout.fillWidth: true
-                visible: customAssetModel.errorText !== ""
-                text: customAssetModel.errorText
+                visible: customAssetModel ? customAssetModel.errorText !== "" : false
+                text: customAssetModel ? customAssetModel.errorText : ""
                 color: appTheme.colors["C_ERR"]
                 wrapMode: Text.WordWrap
             }
@@ -64,7 +64,7 @@ ColumnLayout {
             text: "Add asset"
             highlighted: true
             onClicked: {
-                if (customAssetModel.submit())
+                if (customAssetModel && customAssetModel.submit())
                     accepted();
             }
         }

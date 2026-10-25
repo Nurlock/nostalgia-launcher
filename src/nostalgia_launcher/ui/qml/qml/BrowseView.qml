@@ -70,7 +70,7 @@ Dialog {
                 topPadding: 6
                 bottomPadding: 6
                 Accessible.name: "Search catalog"
-                onTextChanged: root.browseModel.setFilterText(text)
+                onTextChanged: if (root.browseModel) root.browseModel.setFilterText(text)
             }
         }
         StackLayout {
@@ -81,9 +81,9 @@ Dialog {
                 spacing: 6
                 Label {
                     Layout.fillWidth: true
-                    text: root.browseModel.emptyText
+                    text: root.browseModel ? root.browseModel.emptyText : ""
                     color: appTheme.colors["C_TEXT_DIM"]
-                    visible: root.browseModel.emptyVisible
+                    visible: root.browseModel ? root.browseModel.emptyVisible : false
                     wrapMode: Text.WordWrap
                 }
                 ListView {
@@ -93,7 +93,7 @@ Dialog {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     clip: true
-                    model: root.browseModel
+                    model: root.browseModel ? root.browseModel : null
                     delegate: Item {
                         width: ListView.view.width
                         height: rowCol.height
@@ -143,7 +143,7 @@ Dialog {
                                 checked: model.entrySelected || false
                                 topPadding: 0
                                 bottomPadding: 0
-                                onToggled: root.browseModel.setSelected(
+                                onToggled: if (root.browseModel) root.browseModel.setSelected(
                                     model.entryId, checked
                                 )
                             }
@@ -179,23 +179,24 @@ Dialog {
             Layout.fillWidth: true
             Label {
                 Layout.fillWidth: true
-                text: root.browseModel.selectedCount > 0
+                text: (root.browseModel && root.browseModel.selectedCount > 0)
                     ? root.browseModel.selectedCount + " selected"
                     : ""
                 color: appTheme.colors["C_TEXT_DIM"]
             }
             Button {
                 objectName: "qmlBrowseInstall"
-                text: root.browseModel.selectedCount > 0
+                text: (root.browseModel && root.browseModel.selectedCount > 0)
                     ? "Install (" + root.browseModel.selectedCount + ")"
                     : "Install"
                 Accessible.name: "Install selected entries"
-                enabled: root.browseModel.selectedCount > 0
-                    && !root.browseModel.busy
+                enabled: Boolean(root.browseModel
+                    && root.browseModel.selectedCount > 0
+                    && !root.browseModel.busy)
                 highlighted: true
                 topPadding: 6
                 bottomPadding: 6
-                onClicked: root.browseModel.installSelected()
+                onClicked: if (root.browseModel) root.browseModel.installSelected()
             }
         }
     }

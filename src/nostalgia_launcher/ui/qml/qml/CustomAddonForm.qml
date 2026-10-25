@@ -26,20 +26,20 @@ ColumnLayout {
         objectName: "qmlCustomAddonUrl"
         Layout.fillWidth: true
         font.family: "monospace"
-        onTextChanged: customAddonModel.setUrl(text)
+        onTextChanged: if (customAddonModel) customAddonModel.setUrl(text)
     }
     Label {
         objectName: "qmlCustomAddonHint"
         Layout.fillWidth: true
-        text: customAddonModel.hostsHint + "\nInstalls into Interface/AddOns/<folder>."
+        text: (customAddonModel ? customAddonModel.hostsHint : "") + "\nInstalls into Interface/AddOns/<folder>."
         color: appTheme.colors["C_TEXT_DIM"]
         wrapMode: Text.WordWrap
     }
     Label {
         objectName: "qmlCustomAddonError"
         Layout.fillWidth: true
-        visible: customAddonModel.errorText !== ""
-        text: customAddonModel.errorText
+        visible: customAddonModel ? customAddonModel.errorText !== "" : false
+        text: customAddonModel ? customAddonModel.errorText : ""
         color: appTheme.colors["C_ERR"]
         wrapMode: Text.WordWrap
     }
@@ -57,7 +57,7 @@ ColumnLayout {
             text: "Install"
             highlighted: true
             onClicked: {
-                if (customAddonModel.submit())
+                if (customAddonModel && customAddonModel.submit())
                     accepted();
             }
         }

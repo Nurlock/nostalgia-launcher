@@ -422,6 +422,9 @@ class QmlNostalgiaLauncherApp:
             def reload():
                 return ctrl.verify(force=True)
 
+            def update_all():
+                return ctrl.apply_updates()
+
             browse = self._browse_addons
             dialog = "qmlBrowseAddonsDialog"
         elif kind == "mods":
@@ -435,6 +438,9 @@ class QmlNostalgiaLauncherApp:
             def reload():
                 return ctrl.reload_catalog()
 
+            def update_all():
+                return ctrl.apply()
+
             browse = self._browse_mods
             dialog = "qmlBrowseModsDialog"
         else:
@@ -447,6 +453,9 @@ class QmlNostalgiaLauncherApp:
 
             def reload():
                 return ctrl.reload_catalog()
+
+            def update_all():
+                return ctrl.apply()
 
             browse = self._browse_assets
             dialog = "qmlBrowseAssetsDialog"
@@ -475,6 +484,7 @@ class QmlNostalgiaLauncherApp:
             toggle=on_toggle,
             apply=apply_all,
             reload=reload,
+            update=update_all,
         )
         loaded_signal.connect(lambda _e: model.refresh())
         loaded_signal.connect(lambda _e: model.markLoaded())

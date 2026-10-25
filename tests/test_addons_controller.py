@@ -871,6 +871,40 @@ def test_updates_count_tracks_out_of_date(controller):
     assert controller.updates_count == 1
 
 
+def test_update_all_collects_out_of_date_addons(controller):
+    controller.state.addons["Up"] = AddonState(
+        folder="Up", status="upToDate", git="https://example.com/up.git"
+    )
+    controller.state.addons["Out"] = AddonState(
+        folder="Out", status="outOfDate", git="https://example.com/out.git"
+    )
+    recs = controller.update_all()
+    assert len(recs) == 1
+    assert recs[0]["folder"] == "Out"
+
+
+def test_apply_updates_refuses_when_none_out_of_date(controller):
+    controller.state.addons["Up"] = AddonState(folder="Up", status="upToDate")
+    assert controller.apply_updates() is False
+
+
+def test_apply_updates_starts_worker_for_out_of_date(
+    controller, tmp_path, monkeypatch
+):
+    client = str(tmp_path)
+    controller.state.addons["Out"] = AddonState(
+        folder="Out", status="outOfDate", git="https://github.com/a/out.git"
+    )
+    monkeypatch.setattr(controller, "_get_out_dir", lambda: client)
+    started = []
+    monkeypatch.setattr(
+        controller, "apply", lambda recs: started.append(recs) or True
+    )
+    assert controller.apply_updates() is True
+    assert len(started) == 1
+    assert started[0][0]["folder"] == "Out"
+
+
 # ── reset ───────────────────────────────────────────────────────────────
 
 

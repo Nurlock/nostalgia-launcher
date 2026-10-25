@@ -99,10 +99,12 @@ class ContentListModel(QAbstractListModel):
         self._loading = True
         self._scanning = True
         self._empty_text = empty_text
+        self._busy_action = ""
         self._snapshot_provider = None
         self._on_toggle = None
         self._on_apply = None
         self._on_reload = None
+        self._on_update = None
 
     # ── model ─────────────────────────────────────────────────────────
 
@@ -198,6 +200,8 @@ class ContentListModel(QAbstractListModel):
     def set_running(self, running: bool):
         """Busy chrome while an apply/install operation is in flight."""
         running = bool(running)
+        if not running:
+            self._busy_action = ""
         if running != self._busy:
             self._busy = running
             self.chromeChanged.emit()
@@ -226,6 +230,11 @@ class ContentListModel(QAbstractListModel):
         return self._busy
 
     busy = Property(bool, _get_busy, notify=chromeChanged)
+
+    def _get_busy_action(self) -> str:
+        return self._busy_action
+
+    busyAction = Property(str, _get_busy_action, notify=chromeChanged)
 
     def _get_scanning(self) -> bool:
         return self._scanning
@@ -263,10 +272,12 @@ class ContentListModel(QAbstractListModel):
         toggle=None,
         apply=None,
         reload=None,
+        update=None,
     ) -> None:
         self._on_toggle = toggle
         self._on_apply = apply
         self._on_reload = reload
+        self._on_update = update
 
     def _row(self, eid: str):
         for row in self._rows:
@@ -286,8 +297,21 @@ class ContentListModel(QAbstractListModel):
 
     @Slot()
     def applyAll(self) -> None:
-        if self._on_apply is not None and self._on_apply():
-            self.set_running(True)
+        if self._on_apply is not None:
+            self._busy_action = "apply"
+            if self._on_apply():
+                self.set_running(True)
+            else:
+                self._busy_action = ""
+
+    @Slot()
+    def updateAll(self) -> None:
+        if self._on_update is not None:
+            self._busy_action = "update"
+            if self._on_update():
+                self.set_running(True)
+            else:
+                self._busy_action = ""
 
     @Slot()
     def reloadCatalog(self) -> None:

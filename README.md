@@ -1,3 +1,16 @@
+> [!NOTE]  
+> This Project is mainly vibe coded, design decision and directions are still human controled. And audit are made to assure decent quality.
+>
+> I use it as a test ground for AI assisted developement. 
+> It was coded by a series of different models :
+> - Muse Spark 1.3
+> - GLM Series
+> - Gemini Series
+> - Minimax
+> - MiMo
+> 
+> Using multiples agentic software -> Opencode/Pi/Maki/Antigravity
+
 # Nostalgia Launcher
 
 <img src="NostalgiaLauncher.svg" alt="Nostalgia Launcher logo" align="left" width="180" /> Nostalgia Launcher keeps your game installation up to date and helps you manage mods, addons, and settings — all in one place. Your community gives you a small setup file, you pick your game folder, and the launcher takes care of the rest.

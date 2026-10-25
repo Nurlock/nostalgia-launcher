@@ -1472,6 +1472,24 @@ class AddonsController:
         ).start()
         return True
 
+    def update_all(self) -> list[dict]:
+        """The out-of-date installed addons as record dicts, for apply()."""
+        return [
+            rec.to_dict()
+            for rec in self.state.addons.values()
+            if rec.status == "outOfDate"
+        ]
+
+    def apply_updates(self) -> bool:
+        """Install updates for all out-of-date addons.
+
+        Returns True when the worker actually started.
+        """
+        recs = self.update_all()
+        if not recs:
+            return False
+        return self.apply(recs)
+
     def apply(self, recs) -> bool:
         """Install/update the given addon records sequentially, pulling in
         any ``depends: addon:<id>`` prerequisites (resolved against the

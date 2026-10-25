@@ -206,10 +206,18 @@ ColumnLayout {
         Layout.bottomMargin: 10
         spacing: 8
         Button {
-            objectName: "qmlContentApply"
-            text: root.contentModel ? (root.contentModel.busy ? "Uninstalling…" : (root.contentModel.pendingCount > 0 ? "Uninstall (" + root.contentModel.pendingCount + ")" : "Uninstall")) : "Uninstall"
-            enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.pendingCount > 0) : false
+            objectName: "qmlContentUpdate"
+            text: root.contentModel ? (root.contentModel.busy && root.contentModel.busyAction === "update" ? "Updating…" : (root.contentModel.updatesCount > 0 ? "Update (" + root.contentModel.updatesCount + ")" : "Update")) : "Update"
+            visible: root.contentModel ? (root.contentModel.updatesCount > 0) : false
+            enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.updatesCount > 0) : false
             highlighted: true
+            onClicked: if (root.contentModel) root.contentModel.updateAll()
+        }
+        Button {
+            objectName: "qmlContentApply"
+            text: root.contentModel ? (root.contentModel.busy && root.contentModel.busyAction !== "update" ? "Uninstalling…" : (root.contentModel.pendingCount > 0 ? "Uninstall (" + root.contentModel.pendingCount + ")" : "Uninstall")) : "Uninstall"
+            enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.pendingCount > 0) : false
+            highlighted: root.contentModel ? (root.contentModel.pendingCount > 0 && root.contentModel.updatesCount === 0) : false
             onClicked: if (root.contentModel) root.contentModel.applyAll()
         }
         Item { Layout.fillWidth: true }

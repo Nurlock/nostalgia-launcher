@@ -263,9 +263,26 @@ def test_apply_reload(model):
     model.applyAll()
     assert ("apply",) in calls
     assert model.property("busy") is True
+    assert model.property("busyAction") == "apply"
     model.set_running(False)
+    assert model.property("busyAction") == ""
     model.reloadCatalog()
     assert ("reload",) in calls
+
+
+def test_update_action(model):
+    calls = []
+    model.set_handlers(
+        update=lambda: calls.append(("update",)) or True,
+    )
+    _snapshot(model, updates_count=2)
+    assert model.property("busyAction") == ""
+    model.updateAll()
+    assert ("update",) in calls
+    assert model.property("busy") is True
+    assert model.property("busyAction") == "update"
+    model.set_running(False)
+    assert model.property("busyAction") == ""
 
 
 def test_refresh_uses_provider(model):
@@ -318,6 +335,27 @@ def test_nav_badge_follows_updates(engine):
         if btn.property("text")
     ]
     assert "MODS (1)" in texts
+
+
+def test_update_button_in_engine(engine):
+    eng, mods, _assets = engine
+    root = eng.rootObjects()[0]
+    root.findChild(QObject, "qmlNavBar").setProperty("currentIndex", 3)
+    _snapshot(mods, updates_count=0)
+    update_btns = [
+        btn
+        for btn in root.findChildren(QObject, "qmlContentUpdate")
+        if btn.property("visible")
+    ]
+    assert len(update_btns) == 0
+    _snapshot(mods, updates_count=3)
+    update_btns = [
+        btn
+        for btn in root.findChildren(QObject, "qmlContentUpdate")
+        if btn.property("visible")
+    ]
+    assert len(update_btns) == 1
+    assert update_btns[0].property("text") == "Update (3)"
 
 
 # ── addon tab adapter ─────────────────────────────────────────────────

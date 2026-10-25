@@ -11,17 +11,6 @@ import QtQuick.Layouts
 ApplicationWindow {
     id: root
     objectName: "qmlLogDialog"
-    title: "Session log"
-    visible: false
-    width: 720
-    height: 480
-    minimumWidth: 480
-    minimumHeight: 300
-    color: appTheme.colors["C_BG"]
-    Material.theme: appTheme.themed ? Material.Dark : Material.System
-    Material.accent: appTheme.colors["C_GOLD"]
-
-    onVisibleChanged: logDialogVisible(visible)
 
     signal logDialogVisible(bool open)
 
@@ -33,6 +22,18 @@ ApplicationWindow {
         requestActivate();
         raise();
     }
+
+    title: "Session log"
+    visible: false
+    width: 720
+    height: 480
+    minimumWidth: 480
+    minimumHeight: 300
+    color: appTheme.colors["C_BG"]
+    Material.theme: appTheme.themed ? Material.Dark : Material.System
+    Material.accent: appTheme.colors["C_GOLD"]
+
+    onVisibleChanged: logDialogVisible(visible)
 
     header: ToolBar {
         background: Rectangle {

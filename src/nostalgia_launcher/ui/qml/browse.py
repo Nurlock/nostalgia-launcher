@@ -88,7 +88,7 @@ class BrowseModel(QAbstractListModel):
         ]
 
     @Slot(str)
-    def setFilterText(self, text: str):
+    def setFilterText(self, text: str) -> None:
         if text != self._filter_text:
             self._filter_text = text
             self.beginResetModel()
@@ -103,11 +103,11 @@ class BrowseModel(QAbstractListModel):
         self._on_install = callback
 
     @Slot(str)
-    def install(self, eid: str):
+    def install(self, eid: str) -> None:
         if self._on_install is not None and self._on_install(eid):
             self.set_running(True)
 
-    def set_running(self, running: bool):
+    def set_running(self, running: bool) -> None:
         running = bool(running)
         if not running and self._queue:
             # An install just settled with more queued: chain the next
@@ -119,7 +119,7 @@ class BrowseModel(QAbstractListModel):
             self.chromeChanged.emit()
 
     @Slot(str, bool)
-    def setSelected(self, eid: str, checked: bool):
+    def setSelected(self, eid: str, checked: bool) -> None:
         """Model-side echo guard: a programmatic refresh re-firing the
         checkbox is dropped when nothing changed."""
         checked = bool(checked)
@@ -141,7 +141,7 @@ class BrowseModel(QAbstractListModel):
     selectedCount = Property(int, _get_selected_count, notify=selectionChanged)
 
     @Slot()
-    def installSelected(self):
+    def installSelected(self) -> None:
         """Install every selected entry in turn, chained on settle."""
         wanted = set(self._selected)
         ids = [e.get("id") for e in self._visible if e.get("id") in wanted]

@@ -63,7 +63,7 @@ def _repo_file(*parts: str) -> str:
     """Path under the repo root (dev) for bundled resources."""
     here = os.path.abspath(__file__)
     root = here
-    for _ in range(6):
+    for _ in range(5):
         root = os.path.dirname(root)
     return os.path.join(root, *parts)
 

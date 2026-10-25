@@ -159,7 +159,7 @@ class ContentListModel(QAbstractListModel):
         self.changed.emit()
 
     @Slot(str)
-    def setFilterText(self, text: str):
+    def setFilterText(self, text: str) -> None:
         if text != self._filter_text:
             self._filter_text = text
             self._refilter()
@@ -171,7 +171,7 @@ class ContentListModel(QAbstractListModel):
         self._snapshot_provider = provider
 
     @Slot()
-    def refresh(self):
+    def refresh(self) -> None:
         """Re-pull rows + chrome from the provider (loaded events)."""
         if self._snapshot_provider is None:
             return
@@ -238,7 +238,7 @@ class ContentListModel(QAbstractListModel):
     loading = Property(bool, _get_loading, notify=chromeChanged)
 
     @Slot()
-    def markLoaded(self):
+    def markLoaded(self) -> None:
         """First loaded event arrived: leave the waiting screens."""
         if self._loading:
             self._loading = False
@@ -263,19 +263,19 @@ class ContentListModel(QAbstractListModel):
         toggle=None,
         apply=None,
         reload=None,
-    ):
+    ) -> None:
         self._on_toggle = toggle
         self._on_apply = apply
         self._on_reload = reload
 
-    def _row(self, eid):
+    def _row(self, eid: str):
         for row in self._rows:
             if row["eid"] == eid:
                 return row
         return None
 
     @Slot(str, bool)
-    def toggleEntry(self, eid: str, checked: bool):
+    def toggleEntry(self, eid: str, checked: bool) -> None:
         """Checkbox flip — dropped when it echoes current state (QML
         re-fires onCheckedChanged for programmatic refreshes)."""
         row = self._row(eid)
@@ -285,16 +285,16 @@ class ContentListModel(QAbstractListModel):
             self._on_toggle(eid, bool(checked))
 
     @Slot()
-    def applyAll(self):
+    def applyAll(self) -> None:
         if self._on_apply is not None and self._on_apply():
             self.set_running(True)
 
     @Slot()
-    def reloadCatalog(self):
+    def reloadCatalog(self) -> None:
         if self._on_reload is not None and self._on_reload():
             self.set_scanning(True)
 
     @Slot()
-    def requestBrowse(self):
+    def requestBrowse(self) -> None:
         """Empty-state Browse button (app.py opens the dialog)."""
         self.browseRequested.emit()

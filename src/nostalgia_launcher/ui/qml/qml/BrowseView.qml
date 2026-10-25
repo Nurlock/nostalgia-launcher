@@ -9,6 +9,10 @@ import QtQuick.Layouts
 
 Dialog {
     id: root
+
+    property var browseModel
+    property string formSource: ""
+
     objectName: "qmlBrowseDialog"
     title: "BROWSE"
     modal: true
@@ -16,6 +20,8 @@ Dialog {
     width: parent.width
     height: parent.height
     anchors.centerIn: parent
+    bottomPadding: 4
+
     // Custom header: title + close share the title-bar row, so the X
     // costs no extra vertical space. (A button cannot be injected
     // into the native title bar, which this replaces at the same height.)
@@ -45,10 +51,6 @@ Dialog {
             }
         }
     }
-    bottomPadding: 4
-
-    property var browseModel
-    property string formSource: ""
 
     ColumnLayout {
         anchors.fill: parent

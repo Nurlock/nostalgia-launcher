@@ -86,7 +86,7 @@ Dialog {
                     Layout.fillWidth: true
                     editable: true
                     model: linuxModel.protonOptions
-                    Component.onCompleted: currentIndex = Math.max(0, find(linuxModel.proton))
+                    currentIndex: Math.max(0, find(linuxModel.proton))
                 }
                 Button {
                     text: "Apply"
@@ -107,7 +107,7 @@ Dialog {
                     objectName: "qmlLinuxRenderer"
                     Layout.fillWidth: true
                     model: linuxModel.rendererOptions
-                    Component.onCompleted: currentIndex = Math.max(0, find(linuxModel.renderer))
+                    currentIndex: Math.max(0, find(linuxModel.renderer))
                 }
                 Button {
                     text: "Apply"

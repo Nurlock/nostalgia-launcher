@@ -9,6 +9,8 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 ColumnLayout {
+    id: root
+
     signal accepted()
     signal rejected()
 
@@ -127,8 +129,9 @@ ColumnLayout {
 
     // One labelled line edit.
     component Field: ColumnLayout {
-        signal edit(string text)
         property alias caption: cap.text
+        signal edit(string text)
+
         Layout.fillWidth: true
         spacing: 2
         Label {

@@ -107,7 +107,7 @@ class LauncherState(QObject):
     )
 
     @Slot(bool)
-    def setProgressVisible(self, value: bool):
+    def setProgressVisible(self, value: bool) -> None:
         """Footer mini-bar visibility (hidden when updates are off)."""
         self._set_progress_visible(value)
 
@@ -155,27 +155,27 @@ class LauncherState(QObject):
     # ── event intake ──────────────────────────────────────────────────
 
     @Slot(str)
-    def setServerName(self, text: str):
+    def setServerName(self, text: str) -> None:
         """Header wordmark text (main-thread slot for async updates)."""
         self._set_server_name(text)
 
     @Slot(str)
-    def setLogoSource(self, source: str):
+    def setLogoSource(self, source: str) -> None:
         """Header logo `file://` URL (main-thread direct setter)."""
         self._set_logo_source(source)
 
     @Slot(str)
-    def applyLogoSource(self, source: str):
+    def applyLogoSource(self, source: str) -> None:
         """Queued logo setter — the worker thread emits `logoFetched`."""
         self._set_logo_source(source)
 
     @Slot(str)
-    def setStatusText(self, text: str):
+    def setStatusText(self, text: str) -> None:
         """Slot for `ControllerBridge.statusChanged`."""
         self._set_status_text(text)
 
     @Slot(float, str)
-    def setProgress(self, value: float, label: str):
+    def setProgress(self, value: float, label: str) -> None:
         """Slot for `ControllerBridge.progressChanged`."""
         self._set_progress_value(value)
         self._set_progress_label(label)
@@ -326,7 +326,7 @@ class NewsFeedModel(QAbstractListModel):
         self._on_refresh = callback
 
     @Slot()
-    def refresh(self):
+    def refresh(self) -> None:
         """QML refresh button → controller (force refetch)."""
         if self._on_refresh is not None:
             self._on_refresh()
@@ -600,17 +600,17 @@ class UpdateViewState(QObject):
         self._on_realm = callback
 
     @Slot()
-    def primary(self):
+    def primary(self) -> None:
         if self._on_primary is not None:
             self._on_primary()
 
     @Slot()
-    def recheck(self):
+    def recheck(self) -> None:
         if self._on_recheck is not None:
             self._on_recheck()
 
     @Slot(bool)
-    def resolveRealm(self, inject: bool):
+    def resolveRealm(self, inject: bool) -> None:
         self._realm_prompt = ""
         self.realmChanged.emit()
         if self._on_realm is not None:

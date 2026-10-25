@@ -27,7 +27,7 @@ class _FormModel(QObject):
     entryReady = Signal(object)
     errorChanged = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._error = ""
 
@@ -36,7 +36,7 @@ class _FormModel(QObject):
 
     errorText = Property(str, _get_error, notify=errorChanged)
 
-    def _fail(self, message: str):
+    def _fail(self, message: str) -> bool:
         self._error = message
         self.errorChanged.emit()
         return False
@@ -45,17 +45,17 @@ class _FormModel(QObject):
 class CustomModModel(_FormModel):
     """ADD CUSTOM MOD form (kind/type-conditional fields)."""
 
-    def _get_mod_types(self) -> list:
+    def _get_mod_types(self) -> list[str]:
         return list(catalog.MOD_TYPES)
 
     modTypes = Property("QVariantList", _get_mod_types, constant=True)
 
-    def _get_source_kinds(self) -> list:
+    def _get_source_kinds(self) -> list[str]:
         return list(_MOD_KINDS)
 
     sourceKinds = Property("QVariantList", _get_source_kinds, constant=True)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._fields = {
             "modId": "",
@@ -78,16 +78,16 @@ class CustomModModel(_FormModel):
         }
 
     @Slot(str, str)
-    def setField(self, name: str, value: str):
+    def setField(self, name: str, value: str) -> None:
         if name in self._fields and self._fields[name] != value:
             self._fields[name] = value
 
     @Slot(str, bool)
-    def setFlag(self, name: str, value: bool):
+    def setFlag(self, name: str, value: bool) -> None:
         if name in self._fields and self._fields[name] != bool(value):
             self._fields[name] = bool(value)
 
-    def _parse_extract_map(self):
+    def _parse_extract_map(self) -> dict[str, str] | None:
         emap = {}
         for line in self._fields["extractMap"].splitlines():
             line = line.strip()
@@ -100,7 +100,7 @@ class CustomModModel(_FormModel):
         return emap
 
     @Slot(result=bool)
-    def submit(self):
+    def submit(self) -> bool:
         f = self._fields
         mid = f["modId"].strip()
         if not mid:
@@ -162,7 +162,7 @@ class CustomModModel(_FormModel):
 class CustomAddonModel(_FormModel):
     """ADD CUSTOM GIT ADDON form (single URL field)."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._url = ""
         self._hosts_hint = "Allowed hosts: " + ", ".join(ADDON_GIT_HOSTS)
@@ -173,13 +173,13 @@ class CustomAddonModel(_FormModel):
     hostsHint = Property(str, _get_hosts_hint, constant=True)
 
     @Slot(str)
-    def setUrl(self, url: str):
+    def setUrl(self, url: str) -> None:
         self._url = url
         self._error = ""
         self.errorChanged.emit()
 
     @Slot(result=bool)
-    def submit(self):
+    def submit(self) -> bool:
         url = self._url.strip().rstrip("/")
         if url.endswith(".git"):
             url = url[:-4]
@@ -211,7 +211,7 @@ class CustomAddonModel(_FormModel):
 class CustomAssetModel(_FormModel):
     """ADD CUSTOM ASSET form (single-file server content)."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._fields = {
             "assetId": "",
@@ -226,17 +226,17 @@ class CustomAssetModel(_FormModel):
         self._probe = False
 
     @Slot(str, str)
-    def setField(self, name: str, value: str):
+    def setField(self, name: str, value: str) -> None:
         if name in self._fields and self._fields[name] != value:
             self._fields[name] = value
 
     @Slot(str, bool)
-    def setFlag(self, name: str, value: bool):
+    def setFlag(self, name: str, value: bool) -> None:
         if name == "probe":
             self._probe = bool(value)
 
     @Slot(result=bool)
-    def submit(self):
+    def submit(self) -> bool:
         f = self._fields
         aid = f["assetId"].strip()
         if not aid:

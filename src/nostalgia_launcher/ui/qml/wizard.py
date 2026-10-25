@@ -161,7 +161,7 @@ class WizardModel(QObject):
     # ── input slots ───────────────────────────────────────────────────
 
     @Slot(str)
-    def setSource(self, source: str):
+    def setSource(self, source: str) -> None:
         if self._stage != STAGE_INPUT:
             return
         if source in ("url", "file") and source != self._source:
@@ -170,7 +170,7 @@ class WizardModel(QObject):
             self.changed.emit()
 
     @Slot(str)
-    def setUrl(self, url: str):
+    def setUrl(self, url: str) -> None:
         self._url = url
         if url.strip():
             self._source = "url"
@@ -178,7 +178,7 @@ class WizardModel(QObject):
         self.changed.emit()
 
     @Slot(str)
-    def setPath(self, path: str):
+    def setPath(self, path: str) -> None:
         self._path = path
         if path.strip():
             self._source = "file"
@@ -186,7 +186,7 @@ class WizardModel(QObject):
         self.changed.emit()
 
     @Slot(str)
-    def setFolder(self, folder: str):
+    def setFolder(self, folder: str) -> None:
         self._folder = folder
         self._error = ""
         self.changed.emit()
@@ -194,7 +194,7 @@ class WizardModel(QObject):
     # ── navigation ────────────────────────────────────────────────────
 
     @Slot()
-    def goBack(self):
+    def goBack(self) -> None:
         self._error = ""
         if self._stage == STAGE_TRUST:
             self._pending = None
@@ -207,7 +207,7 @@ class WizardModel(QObject):
         self.changed.emit()
 
     @Slot()
-    def reset(self):
+    def reset(self) -> None:
         """Clear all state for reuse (profile-import reopen)."""
         self._stage = STAGE_INPUT
         self._source = "file"
@@ -230,7 +230,7 @@ class WizardModel(QObject):
         self.changed.emit()
 
     @Slot(result=bool)
-    def submit(self):
+    def submit(self) -> bool:
         """Continue/Trust button (returns True when the dialog accepts)."""
         if self._stage == STAGE_TRUST:
             return self._accept_pending()
@@ -311,7 +311,7 @@ class WizardModel(QObject):
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(object)
-    def _on_fetch_result(self, result):
+    def _on_fetch_result(self, result: dict) -> None:
         if not self._fetching:
             return  # cancelled meanwhile
         self._fetching = False

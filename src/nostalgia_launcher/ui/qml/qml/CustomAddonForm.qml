@@ -9,6 +9,8 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 ColumnLayout {
+    id: root
+
     signal accepted()
     signal rejected()
 

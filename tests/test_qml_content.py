@@ -133,6 +133,7 @@ def test_build_rows_sorts_and_maps():
         "enabled",
         "serverManaged",
         "staged",
+        "needsUpdate",
     }
 
 
@@ -181,6 +182,7 @@ def _snapshot(model, **kw):
             "enabled": True,
             "serverManaged": False,
             "staged": True,
+            "needsUpdate": True,
         },
         {
             "eid": "b",
@@ -191,6 +193,7 @@ def _snapshot(model, **kw):
             "enabled": False,
             "serverManaged": False,
             "staged": False,
+            "needsUpdate": False,
         },
     ]
     base = {"updates_count": 1, "pending_count": 1}
@@ -208,6 +211,7 @@ def test_roles(model):
     assert model.data(idx, ContentListModel.EIDRole) == "a"
     assert model.data(idx, ContentListModel.NameRole) == "Alpha"
     assert model.data(idx, ContentListModel.EnabledRole) is True
+    assert model.data(idx, ContentListModel.NeedsUpdateRole) is True
     assert model.data(idx, Qt.ItemDataRole.DisplayRole) is None
 
 
@@ -283,6 +287,48 @@ def test_update_action(model):
     assert model.property("busyAction") == "update"
     model.set_running(False)
     assert model.property("busyAction") == ""
+
+
+def test_update_one_action(model):
+    calls = []
+    model.set_handlers(
+        update_one=lambda eid: calls.append(eid) or True,
+    )
+    _snapshot(model)
+    model.updateOne("a")
+    assert calls == ["a"]
+    assert model.property("busy") is True
+    assert model.property("busyAction") == "update"
+    model.set_running(False)
+    assert model.property("busyAction") == ""
+
+
+def test_build_rows_needs_update_addons():
+    state = SimpleNamespace(
+        records={},
+        pending={},
+        addons={
+            "a-mod": SimpleNamespace(status="outOfDate"),
+            "b-mod": SimpleNamespace(status="upToDate"),
+        },
+    )
+    rows = build_rows(ENTRIES, state)
+    assert rows[0]["needsUpdate"] is True
+    assert rows[1]["needsUpdate"] is False
+
+
+def test_build_rows_needs_update_mods():
+    state = SimpleNamespace(
+        records={
+            "a-mod": _rec(present=True, installed_version="1.0"),
+            "b-mod": _rec(present=True, installed_version="2.0"),
+        },
+        pending={},
+        latest_versions={"a-mod": "1.1", "b-mod": "2.0"},
+    )
+    rows = build_rows(ENTRIES, state)
+    assert rows[0]["needsUpdate"] is True
+    assert rows[1]["needsUpdate"] is False
 
 
 def test_refresh_uses_provider(model):

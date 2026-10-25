@@ -28,6 +28,30 @@ def is_server_managed(entry: dict) -> bool:
     return isinstance(eid, str) and eid.startswith("manifest-")
 
 
+def _entry_needs_update(eid: str, rec, state) -> bool:
+    """Whether an installed entry has an update available."""
+    # 1. Addons: state.addons is folder -> AddonState
+    addons_map = getattr(state, "addons", None)
+    if isinstance(addons_map, dict):
+        addon_rec = addons_map.get(eid)
+        return getattr(addon_rec, "status", None) == "outOfDate"
+
+    # 2. Mods: state.latest_versions is mod_id -> version_str
+    latest_versions = getattr(state, "latest_versions", None)
+    if isinstance(latest_versions, dict):
+        latest = latest_versions.get(eid)
+        if rec is not None and getattr(rec, "present", False) and latest:
+            installed = getattr(rec, "installed_version", None)
+            return bool(installed and installed != latest)
+
+    # 3. Assets: state.verdicts is asset_id -> bool
+    verdicts = getattr(state, "verdicts", None)
+    if isinstance(verdicts, dict) and eid in verdicts:
+        return bool(verdicts[eid])
+
+    return False
+
+
 def build_rows(entries, state) -> list:
     """Flatten registry + state into role dicts, sorted by name.
 
@@ -66,6 +90,7 @@ def build_rows(entries, state) -> list:
                 "enabled": enabled,
                 "serverManaged": is_server_managed(entry),
                 "staged": enabled,
+                "needsUpdate": _entry_needs_update(eid, rec, state),
             }
         )
     return rows
@@ -82,6 +107,7 @@ class ContentListModel(QAbstractListModel):
     RepoUrlRole = Qt.ItemDataRole.UserRole + 6
     StagedRole = Qt.ItemDataRole.UserRole + 7
     ServerManagedRole = Qt.ItemDataRole.UserRole + 8
+    NeedsUpdateRole = Qt.ItemDataRole.UserRole + 9
 
     changed = Signal()
     scanningChanged = Signal()
@@ -105,6 +131,7 @@ class ContentListModel(QAbstractListModel):
         self._on_apply = None
         self._on_reload = None
         self._on_update = None
+        self._on_update_one = None
 
     # ── model ─────────────────────────────────────────────────────────
 
@@ -123,6 +150,7 @@ class ContentListModel(QAbstractListModel):
             ContentListModel.RepoUrlRole: b"repoUrl",
             ContentListModel.StagedRole: b"staged",
             ContentListModel.ServerManagedRole: b"serverManaged",
+            ContentListModel.NeedsUpdateRole: b"needsUpdate",
         }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -138,6 +166,7 @@ class ContentListModel(QAbstractListModel):
             ContentListModel.RepoUrlRole: "repoUrl",
             ContentListModel.StagedRole: "staged",
             ContentListModel.ServerManagedRole: "serverManaged",
+            ContentListModel.NeedsUpdateRole: "needsUpdate",
         }
         attr = _roles.get(int(role))
         return row.get(attr) if attr else None
@@ -273,11 +302,13 @@ class ContentListModel(QAbstractListModel):
         apply=None,
         reload=None,
         update=None,
+        update_one=None,
     ) -> None:
         self._on_toggle = toggle
         self._on_apply = apply
         self._on_reload = reload
         self._on_update = update
+        self._on_update_one = update_one
 
     def _row(self, eid: str):
         for row in self._rows:
@@ -309,6 +340,15 @@ class ContentListModel(QAbstractListModel):
         if self._on_update is not None:
             self._busy_action = "update"
             if self._on_update():
+                self.set_running(True)
+            else:
+                self._busy_action = ""
+
+    @Slot(str)
+    def updateOne(self, eid: str) -> None:
+        if self._on_update_one is not None:
+            self._busy_action = "update"
+            if self._on_update_one(eid):
                 self.set_running(True)
             else:
                 self._busy_action = ""

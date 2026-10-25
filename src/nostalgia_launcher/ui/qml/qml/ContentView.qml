@@ -158,8 +158,27 @@ ColumnLayout {
                     text: model.name
                     font.bold: true
                     font.pointSize: 11
-                    color: appTheme.colors["C_TEXT"]
+                    color: (model.needsUpdate || false) ? appTheme.colors["C_GOLD"] : appTheme.colors["C_TEXT"]
                     elide: Text.ElideRight
+                }
+                Button {
+                    objectName: "qmlContentUpdateOne"
+                    text: "↑"
+                    Accessible.name: "Update " + model.name
+                    ToolTip.text: "Update " + model.name
+                    ToolTip.visible: hovered
+                    visible: (model.needsUpdate || false) && !(model.serverManaged || false)
+                    enabled: root.contentModel ? !root.contentModel.busy : true
+                    flat: true
+                    contentItem: Text {
+                        text: "↑"
+                        font.bold: true
+                        font.pointSize: 15
+                        color: appTheme.colors["C_GOLD"]
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: if (root.contentModel) root.contentModel.updateOne(model.eid)
                 }
                 Button {
                     text: "⧉"

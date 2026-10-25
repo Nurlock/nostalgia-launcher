@@ -425,6 +425,12 @@ class QmlNostalgiaLauncherApp:
             def update_all():
                 return ctrl.apply_updates()
 
+            def update_one(eid):
+                rec = ctrl.state.addons.get(eid)
+                if rec is None:
+                    return False
+                return ctrl.apply([rec.to_dict()])
+
             browse = self._browse_addons
             dialog = "qmlBrowseAddonsDialog"
         elif kind == "mods":
@@ -441,6 +447,9 @@ class QmlNostalgiaLauncherApp:
             def update_all():
                 return ctrl.apply()
 
+            def update_one(eid):
+                return ctrl.apply(only_mod_id=eid)
+
             browse = self._browse_mods
             dialog = "qmlBrowseModsDialog"
         else:
@@ -456,6 +465,9 @@ class QmlNostalgiaLauncherApp:
 
             def update_all():
                 return ctrl.apply()
+
+            def update_one(eid):
+                return ctrl.apply(only_asset_id=eid)
 
             browse = self._browse_assets
             dialog = "qmlBrowseAssetsDialog"
@@ -485,6 +497,7 @@ class QmlNostalgiaLauncherApp:
             apply=apply_all,
             reload=reload,
             update=update_all,
+            update_one=update_one,
         )
         loaded_signal.connect(lambda _e: model.refresh())
         loaded_signal.connect(lambda _e: model.markLoaded())

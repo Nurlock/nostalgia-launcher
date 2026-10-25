@@ -160,6 +160,7 @@ class AssetsState:
     records: dict[str, AssetState] = field(default_factory=dict)
     pending: dict[str, AssetPending] = field(default_factory=dict)
     updates_count: int = 0
+    verdicts: dict[str, bool] = field(default_factory=dict)
 
     @property
     def has_errors(self) -> bool:

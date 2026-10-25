@@ -106,6 +106,7 @@ class AssetsController:
                 if stale:
                     count += 1
             self._verdict_cache = verdicts
+            self.state.verdicts = verdicts
             self.state.updates_count = count
             self._dispatcher.post(AssetsLoaded(self.state))
 
@@ -186,6 +187,7 @@ class AssetsController:
         """Clear pending changes and verdicts (a game-folder change)."""
         self.state.pending = {}
         self.state.updates_count = 0
+        self.state.verdicts = {}
         self.state.records = self._load_records()
 
     # ── internals ───────────────────────────────────────────────────────────

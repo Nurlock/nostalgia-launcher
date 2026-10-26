@@ -3,6 +3,8 @@
 // current file, Method/Progress/Speed/Peers grid, updated-files list.
 // Reads the `updateState` context property (ui/qml/viewmodels.py).
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -88,10 +90,12 @@ ScrollView {
             }
             model: updateState ? updateState.files : null
             delegate: Label {
-                width: fileList.width
-                text: (model.done ? "✓ " : "… ") + model.name
+                id: fileItem
+                required property var model
+                width: ListView.view.width
+                text: (fileItem.model.done ? "✓ " : "… ") + fileItem.model.name
                 font.pointSize: 9
-                color: model.done ? appTheme.colors["C_OK"] : appTheme.colors["C_TEXT_DIM"]
+                color: fileItem.model.done ? appTheme.colors["C_OK"] : appTheme.colors["C_TEXT_DIM"]
                 elide: Text.ElideMiddle
             }
         }

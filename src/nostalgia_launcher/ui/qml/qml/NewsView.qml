@@ -7,6 +7,8 @@
 // The 404 numeral and status line only show for configured feeds;
 // unconfigured feeds get just logo + Play.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -73,22 +75,24 @@ Item {
             clip: true
             model: newsModel ? newsModel : null
             delegate: ColumnLayout {
-                width: newsList.width
+                id: newsItem
+                required property var model
+                width: ListView.view.width
                 spacing: 2
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.date
+                    text: newsItem.model.date
                     font.pointSize: 9
                     color: appTheme.colors["C_TEXT_DIM"]
-                    visible: model.date !== ""
+                    visible: newsItem.model.date !== ""
                 }
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.title
+                    text: newsItem.model.title
                     font.bold: true
                     font.pointSize: 11
                     color: appTheme.colors["C_GOLD"]
@@ -98,28 +102,28 @@ Item {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.author
+                    text: newsItem.model.author
                     font.italic: true
                     font.pointSize: 10
                     color: appTheme.colors["C_TEXT_DIM"]
-                    visible: model.author !== ""
+                    visible: newsItem.model.author !== ""
                 }
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.body
+                    text: newsItem.model.body
                     font.pointSize: 10
                     color: appTheme.colors["C_TEXT"]
                     wrapMode: Text.WordWrap
-                    visible: model.body !== ""
+                    visible: newsItem.model.body !== ""
                 }
                 Button {
                     Layout.leftMargin: 14
                     flat: true
                     text: "Read more ⧉"
-                    visible: model.url !== ""
-                    onClicked: Qt.openUrlExternally(model.url)
+                    visible: newsItem.model.url !== ""
+                    onClicked: Qt.openUrlExternally(newsItem.model.url)
                 }
                 Rectangle {
                     Layout.fillWidth: true

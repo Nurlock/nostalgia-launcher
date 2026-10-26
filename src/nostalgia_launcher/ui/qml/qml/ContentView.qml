@@ -3,6 +3,8 @@
 // Uninstall footer. Instantiated per tab with a `contentModel`
 // (ui/qml/content.py:ContentListModel) plus tab wording.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -140,7 +142,9 @@ ColumnLayout {
             objectName: "qmlContentScrollBar"
         }
         delegate: ColumnLayout {
-            width: entryList.width
+            id: entryDelegate
+            required property var model
+            width: ListView.view.width
             spacing: 2
             RowLayout {
                 Layout.fillWidth: true
@@ -148,41 +152,41 @@ ColumnLayout {
                 Layout.rightMargin: 12
                 spacing: 4
                 CheckBox {
-                    Accessible.name: "Uninstall " + model.name
-                    checked: model.enabled
-                    enabled: !(model.serverManaged || false)
-                    onCheckedChanged: root.contentModel.toggleEntry(model.eid, checked)
+                    Accessible.name: "Uninstall " + entryDelegate.model.name
+                    checked: entryDelegate.model.enabled
+                    enabled: !(entryDelegate.model.serverManaged || false)
+                    onCheckedChanged: root.contentModel.toggleEntry(entryDelegate.model.eid, checked)
                 }
                 Label {
                     text: "●"
                     font.pointSize: 8
                     color: appTheme.colors["C_GOLD"]
-                    visible: (model.staged || false) && !(model.serverManaged || false)
-                    Accessible.name: "Marked for uninstall: " + model.name
+                    visible: (entryDelegate.model.staged || false) && !(entryDelegate.model.serverManaged || false)
+                    Accessible.name: "Marked for uninstall: " + entryDelegate.model.name
                 }
                 Label {
                     text: "SERVER"
                     font.pointSize: 8
                     font.bold: true
                     color: appTheme.colors["C_GOLD"]
-                    visible: model.serverManaged || false
-                    Accessible.name: "Server-managed entry for " + model.name
+                    visible: entryDelegate.model.serverManaged || false
+                    Accessible.name: "Server-managed entry for " + entryDelegate.model.name
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: model.name
+                    text: entryDelegate.model.name
                     font.bold: true
                     font.pointSize: 11
-                    color: (model.needsUpdate || false) ? appTheme.colors["C_GOLD"] : appTheme.colors["C_TEXT"]
+                    color: (entryDelegate.model.needsUpdate || false) ? appTheme.colors["C_GOLD"] : appTheme.colors["C_TEXT"]
                     elide: Text.ElideRight
                 }
                 Button {
                     objectName: "qmlContentUpdateOne"
                     text: "↑"
-                    Accessible.name: "Update " + model.name
-                    ToolTip.text: "Update " + model.name
+                    Accessible.name: "Update " + entryDelegate.model.name
+                    ToolTip.text: "Update " + entryDelegate.model.name
                     ToolTip.visible: hovered
-                    visible: (model.needsUpdate || false) && !(model.serverManaged || false)
+                    visible: (entryDelegate.model.needsUpdate || false) && !(entryDelegate.model.serverManaged || false)
                     enabled: root.contentModel ? !root.contentModel.busy : true
                     flat: true
                     contentItem: Text {
@@ -193,28 +197,28 @@ ColumnLayout {
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    onClicked: if (root.contentModel) root.contentModel.updateOne(model.eid)
+                    onClicked: if (root.contentModel) root.contentModel.updateOne(entryDelegate.model.eid)
                 }
                 Button {
                     text: "⧉"
                     font.pointSize: 15
-                    Accessible.name: "Open repository for " + model.name
+                    Accessible.name: "Open repository for " + entryDelegate.model.name
                     ToolTip.text: "Open repository in browser"
                     ToolTip.visible: hovered
-                    visible: model.repoUrl !== ""
+                    visible: entryDelegate.model.repoUrl !== ""
                     flat: true
-                    onClicked: Qt.openUrlExternally(model.repoUrl)
+                    onClicked: Qt.openUrlExternally(entryDelegate.model.repoUrl)
                 }
             }
             Label {
                 Layout.fillWidth: true
                 Layout.leftMargin: 48
                 Layout.rightMargin: 12
-                text: model.description
+                text: entryDelegate.model.description
                 font.pointSize: 10
                 color: appTheme.colors["C_TEXT_DIM"]
                 wrapMode: Text.WordWrap
-                visible: model.description !== ""
+                visible: entryDelegate.model.description !== ""
             }
             Rectangle {
                 Layout.fillWidth: true

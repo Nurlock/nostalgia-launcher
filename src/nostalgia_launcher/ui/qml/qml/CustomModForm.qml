@@ -3,6 +3,8 @@
 // (ui/qml/custom.py:CustomModModel); emits accepted/rejected instead of
 // closing anything itself.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -114,7 +116,7 @@ ColumnLayout {
             objectName: "qmlCustomModCancel"
             text: "Cancel"
             flat: true
-            onClicked: rejected()
+            onClicked: root.rejected()
         }
         Button {
             objectName: "qmlCustomModSubmit"
@@ -122,7 +124,7 @@ ColumnLayout {
             highlighted: true
             onClicked: {
                 if (customModModel.submit())
-                    accepted();
+                    root.accepted();
             }
         }
     }

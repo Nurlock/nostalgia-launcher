@@ -5,6 +5,8 @@
 // window so it can be watched while interacting with the app). Hosts
 // the Linux (UMU) dialog and the profile-import wizard (Phase 6b).
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -175,19 +177,21 @@ Dialog {
                     Repeater {
                         model: settingsModel ? settingsModel.sources : []
                         RowLayout {
+                            id: sourceRow
+                            required property var modelData
                             width: parent.width
                             Label {
                                 text: "●"
-                                color: modelData.status === "online" ? appTheme.colors["C_OK"] : (modelData.status === "offline" ? appTheme.colors["C_ERR"] : appTheme.colors["C_TEXT_DIM"])
+                                color: sourceRow.modelData.status === "online" ? appTheme.colors["C_OK"] : (sourceRow.modelData.status === "offline" ? appTheme.colors["C_ERR"] : appTheme.colors["C_TEXT_DIM"])
                             }
                             Label {
-                                text: modelData.name
+                                text: sourceRow.modelData.name
                                 font.bold: true
                                 font.pointSize: 10
                                 color: appTheme.colors["C_TEXT"]
                             }
                             Label {
-                                text: modelData.status
+                                text: sourceRow.modelData.status
                                 font.pointSize: 9
                                 color: appTheme.colors["C_TEXT_DIM"]
                             }
@@ -366,19 +370,11 @@ Dialog {
 
     // No footer: the header ✕ closes (DialogButtonBox.Close added a
     // full-width white bar that ate the bottom of every tab).
-    FileDialog {
+    FolderDialog {
         id: folderPicker
         objectName: "qmlSettingsFolderPicker"
         title: "Select game client folder"
-        // NOTE: FileDialog.OpenDirectory is undefined on some backends
-        // (offscreen probe: OpenFile=0, OpenDirectory=undefined) — the
-        // folder mode is the dialog default, so only set fileMode when
-        // the enum exists.
-        Component.onCompleted: {
-            if (FileDialog.OpenDirectory !== undefined)
-                fileMode = FileDialog.OpenDirectory
-        }
-        onAccepted: if (settingsModel) settingsModel.setGameFolder(currentFolder.toString().replace(/^file:\/\//, ""))
+        onAccepted: if (settingsModel) settingsModel.setGameFolder(selectedFolder.toString().replace(/^file:\/\//, ""))
     }
 
     MessageDialog {
@@ -410,6 +406,7 @@ Dialog {
 
     // One shared registry row (ADDONS / MODS).
     component RegistryRow: ColumnLayout {
+        id: regRow
         property string label: ""
         property string url: ""
         signal apply(string text)
@@ -420,16 +417,16 @@ Dialog {
         Layout.fillWidth: true
         spacing: 2
         Label {
-            text: label
+            text: regRow.label
             font.bold: true
             font.pointSize: 9
             color: appTheme.colors["C_TEXT"]
         }
         TextField {
-            Accessible.name: label
+            Accessible.name: regRow.label
             id: urlField
             Layout.fillWidth: true
-            text: url
+            text: regRow.url
             selectByMouse: true
             font.family: "monospace"
         }
@@ -438,31 +435,31 @@ Dialog {
             spacing: 8
             Button {
                 text: "Apply"
-                onClicked: apply(urlField.text)
+                onClicked: regRow.apply(urlField.text)
             }
             Button {
                 text: "Reset"
                 flat: true
                 ToolTip.text: "Use the default server catalog"
                 ToolTip.visible: hovered
-                onClicked: reset()
+                onClicked: regRow.reset()
             }
             Button {
                 text: "Reload"
                 flat: true
                 ToolTip.text: "Fetch the catalog now and refresh the tab"
                 ToolTip.visible: hovered
-                onClicked: reload()
+                onClicked: regRow.reload()
             }
             Button {
                 text: "Open custom file"
                 flat: true
-                onClicked: openCustom()
+                onClicked: regRow.openCustom()
             }
             Button {
                 text: "Clear custom entries"
                 flat: true
-                onClicked: clearCustom()
+                onClicked: regRow.clearCustom()
             }
         }
     }

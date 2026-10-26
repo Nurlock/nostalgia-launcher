@@ -2,6 +2,8 @@
 // Reads the `browseModel` property (ui/qml/browse.py:BrowseModel).
 // Installed via the tab's existing apply-one path; no staging here.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -118,12 +120,15 @@ Dialog {
                         objectName: "qmlBrowseScrollBar"
                     }
                     delegate: Item {
+                        id: browseDelegate
+                        required property var model
+                        required property int index
                         width: ListView.view.width
                         height: rowCol.height
                         Rectangle {
                             anchors.fill: parent
                             color: appTheme.colors["C_TEXT"]
-                            opacity: (index % 2) ? 0.08 : 0
+                            opacity: (browseDelegate.index % 2) ? 0.08 : 0
                         }
                         ColumnLayout {
                             id: rowCol
@@ -137,39 +142,39 @@ Dialog {
                                 spacing: 4
                                 Label {
                                     Layout.fillWidth: true
-                                    text: model.entryName
+                                    text: browseDelegate.model.entryName
                                     font.bold: true
                                     font.pointSize: 10
                                     font.underline: titleHover.containsMouse
-                                            && (model.entryRepoUrl || "") !== ""
-                                    color: (model.entryRepoUrl || "") !== ""
+                                            && (browseDelegate.model.entryRepoUrl || "") !== ""
+                                    color: (browseDelegate.model.entryRepoUrl || "") !== ""
                                         ? appTheme.colors["C_GOLD"]
                                         : appTheme.colors["C_TEXT"]
                                     elide: Text.ElideRight
-                                    Accessible.name: (model.entryRepoUrl || "") !== ""
-                                        ? "Open repository for " + model.entryName
-                                        : "Addon " + model.entryName
+                                    Accessible.name: (browseDelegate.model.entryRepoUrl || "") !== ""
+                                        ? "Open repository for " + browseDelegate.model.entryName
+                                        : "Addon " + browseDelegate.model.entryName
                                     ToolTip.text: "Open repository in browser"
                                     ToolTip.visible: titleHover.containsMouse
-                                        && (model.entryRepoUrl || "") !== ""
+                                        && (browseDelegate.model.entryRepoUrl || "") !== ""
                                     MouseArea {
                                         id: titleHover
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        cursorShape: (model.entryRepoUrl || "") !== ""
+                                        cursorShape: (browseDelegate.model.entryRepoUrl || "") !== ""
                                             ? Qt.PointingHandCursor
                                             : Qt.ArrowCursor
-                                        enabled: (model.entryRepoUrl || "") !== ""
-                                        onClicked: Qt.openUrlExternally(model.entryRepoUrl)
+                                        enabled: (browseDelegate.model.entryRepoUrl || "") !== ""
+                                        onClicked: Qt.openUrlExternally(browseDelegate.model.entryRepoUrl)
                                     }
                                 }
                                 CheckBox {
-                                    Accessible.name: "Select " + model.entryName
-                                    checked: model.entrySelected || false
+                                    Accessible.name: "Select " + browseDelegate.model.entryName
+                                    checked: browseDelegate.model.entrySelected || false
                                     topPadding: 0
                                     bottomPadding: 0
                                     onToggled: if (root.browseModel) root.browseModel.setSelected(
-                                        model.entryId, checked
+                                        browseDelegate.model.entryId, checked
                                     )
                                 }
                             }
@@ -178,13 +183,13 @@ Dialog {
                                 Layout.leftMargin: 16
                                 Layout.rightMargin: 16
                                 Layout.topMargin: -4
-                                text: model.entryDescription
+                                text: browseDelegate.model.entryDescription
                                 font.pointSize: 9
                                 color: appTheme.colors["C_TEXT"]
                                 wrapMode: Text.WordWrap
                                 maximumLineCount: 1
                                 elide: Text.ElideRight
-                                visible: model.entryDescription !== ""
+                                visible: browseDelegate.model.entryDescription !== ""
                             }
                         }
                     }

@@ -3,6 +3,8 @@
 // (ui/qml/custom.py:CustomAssetModel); emits accepted/rejected instead
 // of closing anything itself.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -57,7 +59,7 @@ ColumnLayout {
         Button {
             text: "Cancel"
             flat: true
-            onClicked: rejected()
+            onClicked: root.rejected()
         }
         Button {
             objectName: "qmlCustomAssetSubmit"
@@ -65,7 +67,7 @@ ColumnLayout {
             highlighted: true
             onClicked: {
                 if (customAssetModel && customAssetModel.submit())
-                    accepted();
+                    root.accepted();
             }
         }
     }

@@ -4,6 +4,8 @@
 // (ui/qml/wizard.py:WizardModel). Used standalone at first launch
 // (WizardWindow.qml) and embedded for profile import.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -225,9 +227,11 @@ Dialog {
                 Repeater {
                     model: wizard ? wizard.trustCaps : []
                     Label {
+                        id: trustCapLabel
+                        required property var modelData
                         Layout.fillWidth: true
-                        text: (modelData.enabled ? "✓ " : "— ") + modelData.detail
-                        color: modelData.enabled ? appTheme.colors["C_TEXT"] : appTheme.colors["C_TEXT_DIM"]
+                        text: (trustCapLabel.modelData.enabled ? "✓ " : "— ") + trustCapLabel.modelData.detail
+                        color: trustCapLabel.modelData.enabled ? appTheme.colors["C_TEXT"] : appTheme.colors["C_TEXT_DIM"]
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -293,17 +297,9 @@ Dialog {
         onAccepted: wizard.setPath(currentFile.toString().replace(/^file:\/\//, ""))
     }
 
-    FileDialog {
+    FolderDialog {
         id: folderPicker
         title: "Select game client folder"
-        // NOTE: FileDialog.OpenDirectory is undefined on some backends
-        // (offscreen probe: OpenFile=0, OpenDirectory=undefined) — the
-        // folder mode is the dialog default, so only set fileMode when
-        // the enum exists.
-        Component.onCompleted: {
-            if (FileDialog.OpenDirectory !== undefined)
-                fileMode = FileDialog.OpenDirectory
-        }
-        onAccepted: wizard.setFolder(currentFolder.toString().replace(/^file:\/\//, ""))
+        onAccepted: wizard.setFolder(selectedFolder.toString().replace(/^file:\/\//, ""))
     }
 }

@@ -3,6 +3,8 @@
 // `logModel` context property (ui/qml/settings.py:LogModel). Independent
 // modeless window (stays readable while interacting with the app).
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -99,8 +101,10 @@ ApplicationWindow {
             width: parent.width
             model: logModel ? logModel.lines : []
             delegate: Label {
+                id: logLine
+                required property string modelData
                 width: ListView.view.width - 16
-                text: modelData
+                text: logLine.modelData
                 font.family: "monospace"
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT"]

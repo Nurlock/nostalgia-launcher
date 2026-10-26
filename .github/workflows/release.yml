@@ -248,5 +248,6 @@ jobs:
           # created the release already; upload --clobber refreshes assets.
           gh release view "$TAG" >/dev/null 2>&1 || \
             gh release create "$TAG" --title "Nostalgia Launcher $TAG" \
+              --prerelease \
               --generate-notes
           gh release upload "$TAG" artifacts/* --clobber

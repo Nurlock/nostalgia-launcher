@@ -567,12 +567,6 @@ def find_toc_for_folder(
     but unloadable in-game until the folder is renamed),
     ``missing`` (no ``*.toc`` at all) or ``ambiguous`` (several
     mismatched candidates). One ``os.scandir``, never raises."""
-    standard = os.path.join(dir_path, f"{folder_name}.toc")
-    try:
-        if os.path.isfile(standard):
-            return standard, "exact"
-    except OSError:
-        pass
     try:
         with os.scandir(dir_path) as it:
             tocs = [

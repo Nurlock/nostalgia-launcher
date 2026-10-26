@@ -1165,6 +1165,7 @@ def test_terminate_game_kills_running_process(
     controller.state.game_pid = 1234
     controller.state.game_pgid = 9999
     killed = []
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
     monkeypatch.setattr(
         "nostalgia_launcher.services.umu.kill_game",
         lambda pid, pgid: killed.append((pid, pgid)),
@@ -1172,7 +1173,27 @@ def test_terminate_game_kills_running_process(
 
     assert controller.terminate_game() is True
 
-    assert killed == [(1234, 9999)]
+    wait_for_event.until_true(lambda: killed == [(1234, 9999)])
+    events = controller._dispatcher.drain()
+    assert any(
+        isinstance(e, LogMessage) and "Terminating game" in e.text
+        for e in events
+    )
+
+
+def test_terminate_game_kills_running_process_windows(
+    controller, worker_cls, controller_cfg, wait_for_event, monkeypatch
+):
+    controller.state.game_running = True
+    controller.state.game_pid = 1234
+    controller.state.game_pgid = 9999
+    proc = Mock()
+    controller._game_proc = proc
+    monkeypatch.setattr(uc, "is_linux", lambda: False)
+
+    assert controller.terminate_game() is True
+
+    wait_for_event.until_true(lambda: proc.terminate.called)
     events = controller._dispatcher.drain()
     assert any(
         isinstance(e, LogMessage) and "Terminating game" in e.text

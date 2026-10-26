@@ -27,7 +27,7 @@ ColumnLayout {
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 12
-            spacing: 4
+            spacing: 2
             RowLayout {
                 Layout.fillWidth: true
                 Label {
@@ -55,15 +55,27 @@ ColumnLayout {
             }
             RowLayout {
                 Layout.fillWidth: true
+                Layout.topMargin: 0
+                Layout.bottomMargin: 2
+                spacing: 8
                 TextField {
                     objectName: "qmlContentSearch"
                     Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    Layout.alignment: Qt.AlignVCenter
+                    topPadding: 4
+                    bottomPadding: 4
+                    font.pointSize: 9
                     placeholderText: "⌕  Filter"
                     Accessible.name: "Filter entries"
                     onTextChanged: root.contentModel.setFilterText(text)
                 }
                 Button {
                     objectName: "qmlContentBrowseMore"
+                    Layout.preferredHeight: 36
+                    Layout.alignment: Qt.AlignVCenter
+                    topPadding: 4
+                    bottomPadding: 4
                     text: "Add " + root.tabTitle.toLowerCase()
                     onClicked: root.contentModel.requestBrowse()
                 }
@@ -124,6 +136,9 @@ ColumnLayout {
         Layout.fillHeight: true
         clip: true
         model: root.contentModel
+        ScrollBar.vertical: ScrollBar {
+            objectName: "qmlContentScrollBar"
+        }
         delegate: ColumnLayout {
             width: entryList.width
             spacing: 2
@@ -221,8 +236,8 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: 16
         Layout.rightMargin: 16
-        Layout.topMargin: 6
-        Layout.bottomMargin: 10
+        Layout.topMargin: 2
+        Layout.bottomMargin: 4
         spacing: 8
         Button {
             objectName: "qmlContentUpdate"
@@ -230,6 +245,8 @@ ColumnLayout {
             visible: root.contentModel ? (root.contentModel.updatesCount > 0) : false
             enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.updatesCount > 0) : false
             highlighted: true
+            topPadding: 2
+            bottomPadding: 2
             onClicked: if (root.contentModel) root.contentModel.updateAll()
         }
         Button {
@@ -237,6 +254,8 @@ ColumnLayout {
             text: root.contentModel ? (root.contentModel.busy && root.contentModel.busyAction !== "update" ? "Uninstalling…" : (root.contentModel.pendingCount > 0 ? "Uninstall (" + root.contentModel.pendingCount + ")" : "Uninstall")) : "Uninstall"
             enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.pendingCount > 0) : false
             highlighted: root.contentModel ? (root.contentModel.pendingCount > 0 && root.contentModel.updatesCount === 0) : false
+            topPadding: 2
+            bottomPadding: 2
             onClicked: if (root.contentModel) root.contentModel.applyAll()
         }
         Item { Layout.fillWidth: true }

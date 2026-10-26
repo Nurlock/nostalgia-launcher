@@ -64,29 +64,6 @@ Item {
             font.pointSize: 9
             color: appTheme.colors["C_TEXT_DIM"]
         }
-        Label {
-            Layout.fillWidth: true
-            Layout.leftMargin: 14
-            Layout.rightMargin: 14
-            Layout.topMargin: 6
-            visible: newsModel ? newsModel.featuredTitle !== "" : false
-            text: newsModel && newsModel.featuredTitle !== "" ? "★ " + newsModel.featuredTitle : ""
-            Accessible.name: "Featured announcement: " + (newsModel ? newsModel.featuredTitle : "")
-            ToolTip.text: (newsModel && newsModel.featuredUrl !== "") ? "Open announcement in browser" : ""
-            ToolTip.visible: featuredHover.containsMouse && (newsModel ? newsModel.featuredUrl !== "" : false)
-            MouseArea {
-                id: featuredHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                enabled: newsModel ? newsModel.featuredUrl !== "" : false
-                onClicked: if (newsModel && newsModel.featuredUrl) Qt.openUrlExternally(newsModel.featuredUrl)
-            }
-            font.bold: true
-            font.pointSize: 11
-            color: appTheme.colors["C_GOLD"]
-            elide: Text.ElideRight
-        }
         ListView {
             id: newsList
             objectName: "qmlNewsList"

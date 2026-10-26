@@ -246,9 +246,12 @@ def test_progress_manifest_prefixed_list_no_duplicate(state):
 def test_status_intake(state):
     state.on_status("Verifying…")
     assert state.property("phaseText") == "Verifying…"
-    assert state.property("fileText") == "Preparing client update…"
+    assert state.property("fileText") == "Verifying client files…"
     state.on_status("something else")
     assert state.property("phaseText") == "Verifying…"
+    state.on_status("Updating…")
+    assert state.property("phaseText") == "Updating…"
+    assert state.property("fileText") == "Preparing client update…"
 
 
 # ── finish matrix ─────────────────────────────────────────────────────
@@ -258,6 +261,7 @@ def test_verify_ok(state):
     state.on_files(UpdateFilesList(["a"]))
     state.on_finished("verify", True, "")
     assert state.property("phaseText") == "Verified"
+    assert state.property("fileText") == "All files verified."
     assert state.property("progressVisible") is False
     files = state.property("files")
     assert files.data(files.index(0), UpdateFilesModel.DoneRole) is True
@@ -266,6 +270,7 @@ def test_verify_ok(state):
 def test_update_ok(state):
     state.on_finished("update", True, "")
     assert state.property("phaseText") == "Complete"
+    assert state.property("fileText") == "Client is up to date."
 
 
 def test_verify_failed_needs_update(state):
@@ -291,8 +296,10 @@ def test_operation_failed(state):
 def test_mods_addons_chain(state):
     state.on_finished("mods", True, "")
     assert state.property("phaseText") == "Updating addons and mods"
+    assert state.property("fileText") == "Mods complete; checking addons…"
     state.on_finished("addons", True, "")
     assert state.property("phaseText") == "Complete"
+    assert state.property("fileText") == "Addons up to date."
 
 
 def test_primary_and_recheck_handlers(state):
@@ -331,6 +338,7 @@ def test_update_view_loads(engine):
         "qmlUpdateProgress",
         "qmlUpdateFile",
         "qmlUpdateFileList",
+        "qmlUpdateFileScrollBar",
         "qmlUpdateTransport",
         "qmlUpdateAmount",
         "qmlUpdateSpeed",

@@ -182,11 +182,24 @@ class ContentListModel(QAbstractListModel):
         return True
 
     def _refilter(self):
-        self.beginResetModel()
-        try:
-            self._visible = [r for r in self._rows if self._matches(r)]
-        finally:
-            self.endResetModel()
+        new_visible = [r for r in self._rows if self._matches(r)]
+        old_visible = self._visible
+        old_eids = [r["eid"] for r in old_visible]
+        new_eids = [r["eid"] for r in new_visible]
+        if old_eids == new_eids:
+            self._visible = new_visible
+            for i, (old, new) in enumerate(
+                zip(old_visible, new_visible, strict=True)
+            ):
+                if old != new:
+                    idx = self.index(i, 0)
+                    self.dataChanged.emit(idx, idx, [])
+        else:
+            self.beginResetModel()
+            try:
+                self._visible = new_visible
+            finally:
+                self.endResetModel()
         self.changed.emit()
 
     @Slot(str)

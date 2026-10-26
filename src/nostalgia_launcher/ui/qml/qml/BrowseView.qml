@@ -16,18 +16,19 @@ Dialog {
     objectName: "qmlBrowseDialog"
     title: "BROWSE"
     modal: true
-    // Fill the window: this is a working list, not a confirmation.
-    width: parent.width
-    height: parent.height
+    // Fill 95% of the mother window; the tab container fills the dialog.
+    width: parent ? parent.width * 0.95 : 560
+    height: parent ? parent.height * 0.95 : 420
     anchors.centerIn: parent
-    bottomPadding: 4
+    padding: 0
+    topPadding: 0
+    bottomPadding: 0
+    leftPadding: 0
+    rightPadding: 0
 
-    // Custom header: title + close share the title-bar row, so the X
-    // costs no extra vertical space. (A button cannot be injected
-    // into the native title bar, which this replaces at the same height.)
     header: ToolBar {
         background: Rectangle {
-            color: appTheme.colors["C_PANEL"]
+            color: appTheme.colors["C_HDR"]
         }
         RowLayout {
             anchors.fill: parent
@@ -35,10 +36,11 @@ Dialog {
             anchors.rightMargin: 8
             Label {
                 Layout.fillWidth: true
+                verticalAlignment: Text.AlignVCenter
                 text: root.title
                 font.bold: true
                 font.pointSize: 13
-                color: appTheme.colors["C_TEXT"]
+                color: appTheme.colors["C_GOLD_LT"]
                 elide: Text.ElideRight
             }
             ToolButton {
@@ -54,39 +56,57 @@ Dialog {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 6
-        RowLayout {
+        spacing: 0
+
+        TabBar {
+            id: browseTabs
+            objectName: "qmlBrowseTabs"
             Layout.fillWidth: true
-            spacing: 6
-            TabBar {
-                id: browseTabs
-                TabButton { text: "Catalog" }
-                TabButton { text: "Custom" }
-            }
-            TextField {
-                objectName: "qmlBrowseSearch"
-                Layout.fillWidth: true
-                placeholderText: "Search"
-                topPadding: 6
-                bottomPadding: 6
-                Accessible.name: "Search catalog"
-                onTextChanged: if (root.browseModel) root.browseModel.setFilterText(text)
-            }
+            TabButton { text: "Catalog" }
+            TabButton { text: "Custom" }
         }
+
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: browseTabs.currentIndex
+
+            // ── Catalog ──────────────────────────────────────────
             ColumnLayout {
                 spacing: 6
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 16
+                    Layout.rightMargin: 16
+                    Layout.topMargin: 6
+                    Layout.bottomMargin: 4
+                    TextField {
+                        objectName: "qmlBrowseSearch"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+                        Layout.alignment: Qt.AlignVCenter
+                        topPadding: 2
+                        bottomPadding: 2
+                        font.pointSize: 9
+                        placeholderText: "⌕  Filter"
+                        Accessible.name: "Search catalog"
+                        onTextChanged: if (root.browseModel) root.browseModel.setFilterText(text)
+                    }
+                }
+
                 Label {
                     Layout.fillWidth: true
+                    Layout.leftMargin: 16
+                    Layout.rightMargin: 16
                     text: root.browseModel ? root.browseModel.emptyText : ""
                     color: appTheme.colors["C_TEXT_DIM"]
                     visible: root.browseModel ? root.browseModel.emptyVisible : false
                     wrapMode: Text.WordWrap
                 }
+
                 ListView {
+                    id: browseList
                     objectName: "qmlBrowseList"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -94,6 +114,9 @@ Dialog {
                     Layout.rightMargin: 8
                     clip: true
                     model: root.browseModel ? root.browseModel : null
+                    ScrollBar.vertical: ScrollBar {
+                        objectName: "qmlBrowseScrollBar"
+                    }
                     delegate: Item {
                         width: ListView.view.width
                         height: rowCol.height
@@ -107,98 +130,123 @@ Dialog {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             spacing: 0
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            Label {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: model.entryName
-                                font.bold: true
-                                font.pointSize: 10
-                                font.underline: titleHover.containsMouse
+                                Layout.leftMargin: 16
+                                Layout.rightMargin: 16
+                                spacing: 4
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: model.entryName
+                                    font.bold: true
+                                    font.pointSize: 10
+                                    font.underline: titleHover.containsMouse
+                                            && (model.entryRepoUrl || "") !== ""
+                                    color: (model.entryRepoUrl || "") !== ""
+                                        ? appTheme.colors["C_GOLD"]
+                                        : appTheme.colors["C_TEXT"]
+                                    elide: Text.ElideRight
+                                    Accessible.name: (model.entryRepoUrl || "") !== ""
+                                        ? "Open repository for " + model.entryName
+                                        : "Addon " + model.entryName
+                                    ToolTip.text: "Open repository in browser"
+                                    ToolTip.visible: titleHover.containsMouse
                                         && (model.entryRepoUrl || "") !== ""
-                                color: (model.entryRepoUrl || "") !== ""
-                                    ? appTheme.colors["C_GOLD"]
-                                    : appTheme.colors["C_TEXT"]
-                                elide: Text.ElideRight
-                                Accessible.name: (model.entryRepoUrl || "") !== ""
-                                    ? "Open repository for " + model.entryName
-                                    : "Addon " + model.entryName
-                                ToolTip.text: "Open repository in browser"
-                                ToolTip.visible: titleHover.containsMouse
-                                    && (model.entryRepoUrl || "") !== ""
-                                MouseArea {
-                                    id: titleHover
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: (model.entryRepoUrl || "") !== ""
-                                        ? Qt.PointingHandCursor
-                                        : Qt.ArrowCursor
-                                    enabled: (model.entryRepoUrl || "") !== ""
-                                    onClicked: Qt.openUrlExternally(model.entryRepoUrl)
+                                    MouseArea {
+                                        id: titleHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: (model.entryRepoUrl || "") !== ""
+                                            ? Qt.PointingHandCursor
+                                            : Qt.ArrowCursor
+                                        enabled: (model.entryRepoUrl || "") !== ""
+                                        onClicked: Qt.openUrlExternally(model.entryRepoUrl)
+                                    }
+                                }
+                                CheckBox {
+                                    Accessible.name: "Select " + model.entryName
+                                    checked: model.entrySelected || false
+                                    topPadding: 0
+                                    bottomPadding: 0
+                                    onToggled: if (root.browseModel) root.browseModel.setSelected(
+                                        model.entryId, checked
+                                    )
                                 }
                             }
-                            CheckBox {
-                                Accessible.name: "Select " + model.entryName
-                                checked: model.entrySelected || false
-                                topPadding: 0
-                                bottomPadding: 0
-                                onToggled: if (root.browseModel) root.browseModel.setSelected(
-                                    model.entryId, checked
-                                )
+                            Label {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 16
+                                Layout.rightMargin: 16
+                                Layout.topMargin: -4
+                                text: model.entryDescription
+                                font.pointSize: 9
+                                color: appTheme.colors["C_TEXT"]
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 1
+                                elide: Text.ElideRight
+                                visible: model.entryDescription !== ""
                             }
                         }
-                        Label {
-                            Layout.fillWidth: true
-                            Layout.topMargin: -4
-                            text: model.entryDescription
-                            font.pointSize: 9
-                            color: appTheme.colors["C_TEXT"]
-                            wrapMode: Text.WordWrap
-                            maximumLineCount: 1
-                            elide: Text.ElideRight
-                            visible: model.entryDescription !== ""
-                        }
-                        }
                     }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: appTheme.colors["C_DIVIDER"]
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 16
+                    Layout.rightMargin: 16
+                    Layout.topMargin: 2
+                    Layout.bottomMargin: 4
+                    spacing: 8
+                    Label {
+                        Layout.fillWidth: true
+                        text: (root.browseModel && root.browseModel.selectedCount > 0)
+                            ? root.browseModel.selectedCount + " selected"
+                            : ""
+                        color: appTheme.colors["C_TEXT_DIM"]
                     }
+                    Button {
+                        objectName: "qmlBrowseInstall"
+                        text: (root.browseModel && root.browseModel.selectedCount > 0)
+                            ? "Install (" + root.browseModel.selectedCount + ")"
+                            : "Install"
+                        Accessible.name: "Install selected entries"
+                        enabled: Boolean(root.browseModel
+                            && root.browseModel.selectedCount > 0
+                            && !root.browseModel.busy)
+                        highlighted: true
+                        topPadding: 2
+                        bottomPadding: 2
+                        onClicked: if (root.browseModel) root.browseModel.installSelected()
+                    }
+                }
             }
-            Loader {
-                id: formLoader
+
+            // ── Custom ───────────────────────────────────────────
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                source: root.formSource
-            }
-            Connections {
-                target: formLoader.item
-                function onAccepted() { browseTabs.currentIndex = 0; }
-                function onRejected() { browseTabs.currentIndex = 0; }
+                Loader {
+                    id: formLoader
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    anchors.topMargin: 16
+                    anchors.bottomMargin: 16
+                    source: root.formSource
+                }
             }
         }
-        RowLayout {
-            Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: (root.browseModel && root.browseModel.selectedCount > 0)
-                    ? root.browseModel.selectedCount + " selected"
-                    : ""
-                color: appTheme.colors["C_TEXT_DIM"]
-            }
-            Button {
-                objectName: "qmlBrowseInstall"
-                text: (root.browseModel && root.browseModel.selectedCount > 0)
-                    ? "Install (" + root.browseModel.selectedCount + ")"
-                    : "Install"
-                Accessible.name: "Install selected entries"
-                enabled: Boolean(root.browseModel
-                    && root.browseModel.selectedCount > 0
-                    && !root.browseModel.busy)
-                highlighted: true
-                topPadding: 6
-                bottomPadding: 6
-                onClicked: if (root.browseModel) root.browseModel.installSelected()
-            }
+
+        Connections {
+            target: formLoader.item
+            function onAccepted() { browseTabs.currentIndex = 0; }
+            function onRejected() { browseTabs.currentIndex = 0; }
         }
     }
 }
-

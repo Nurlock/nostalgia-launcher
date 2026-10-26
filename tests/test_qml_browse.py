@@ -217,6 +217,24 @@ def test_browse_addons_dialog_loads(engine):
     assert root.findChild(QObject, "qmlBrowseAddonsDialog") is not None
 
 
+def test_browse_dialogs_have_scrollbar_and_tabs(engine):
+    from PySide6.QtCore import QObject
+
+    eng, _mods, _assets = engine
+    root = eng.rootObjects()[0]
+    for name in (
+        "qmlBrowseModsDialog",
+        "qmlBrowseAssetsDialog",
+        "qmlBrowseAddonsDialog",
+    ):
+        dlg = root.findChild(QObject, name)
+        assert dlg is not None
+        assert dlg.findChild(QObject, "qmlBrowseTabs") is not None
+        browse_list = dlg.findChild(QObject, "qmlBrowseList")
+        assert browse_list is not None
+        assert browse_list.findChild(QObject, "qmlBrowseScrollBar") is not None
+
+
 def test_set_selected_toggles_entry_role(model):
     model.set_entries(_entries())
     assert model.property("selectedCount") == 0

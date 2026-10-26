@@ -79,8 +79,13 @@ ScrollView {
             Layout.fillWidth: true
             Layout.leftMargin: 32
             Layout.rightMargin: 32
-            Layout.preferredHeight: 120
+            Layout.preferredHeight: count > 0 ? 120 : 0
+            visible: count > 0
             clip: true
+            ScrollBar.vertical: ScrollBar {
+                objectName: "qmlUpdateFileScrollBar"
+                policy: ScrollBar.AsNeeded
+            }
             model: updateState ? updateState.files : null
             delegate: Label {
                 width: fileList.width

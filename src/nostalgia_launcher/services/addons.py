@@ -567,6 +567,12 @@ def find_toc_for_folder(
     but unloadable in-game until the folder is renamed),
     ``missing`` (no ``*.toc`` at all) or ``ambiguous`` (several
     mismatched candidates). One ``os.scandir``, never raises."""
+    standard = os.path.join(dir_path, f"{folder_name}.toc")
+    try:
+        if os.path.isfile(standard):
+            return standard, "exact"
+    except OSError:
+        pass
     try:
         with os.scandir(dir_path) as it:
             tocs = [
@@ -903,111 +909,3 @@ def install_addon_files(
     return _install_archive_bytes(
         client_dir, folder, data, wanted=wanted, git_style=True
     )
-
-
-# ── tracked-install index ─────────────────────────────────────────────────
-
-INDEX_SCHEMA_VERSION = 1
-
-
-def snapshot_toc_dir(addons_dir: str, folder: str) -> dict:
-    """Snapshot ``{folder: {mtime_ns, size, title}}`` entries for the .toc
-    of one installed addon folder (the whole-dir .toc, not per-file
-    hashes). ``{}`` when the folder has no loadable .toc. Never raises —
-    staleness is detected by comparing this snapshot on the next scan."""
-    snap: dict = {}
-    if not addons_dir or not folder:
-        return snap
-    dir_path = os.path.join(addons_dir, folder)
-    try:
-        toc_path, _kind = find_toc_for_folder(dir_path, folder)
-    except Exception:
-        return snap
-    if not toc_path:
-        return snap
-    try:
-        st = os.stat(toc_path)
-    except OSError:
-        return snap
-    try:
-        title = read_toc_file_cached(toc_path).get("Title")
-    except Exception:
-        title = None
-    snap[folder] = {
-        "mtime_ns": st.st_mtime_ns,
-        "size": st.st_size,
-        "title": title if isinstance(title, str) else "",
-    }
-    return snap
-
-
-def snapshot_toc_folders(addons_dir: str, folders) -> dict:
-    """Snapshot the .toc of every folder in ``folders`` into one dict."""
-    snap: dict = {}
-    for folder in folders or []:
-        if not isinstance(folder, str) or not folder:
-            continue
-        try:
-            snap.update(snapshot_toc_dir(addons_dir, folder))
-        except Exception:
-            continue
-    return snap
-
-
-def toc_snapshot_changed(
-    addons_dir: str, folder: str, snapshot: dict | None
-) -> bool:
-    """Whether an installed folder's .toc differs from its index snapshot
-    (mtime/size changed, snapshot missing, or toc unreadable). Never
-    raises — on doubt reports changed so the scan re-reads."""
-    if not isinstance(snapshot, dict):
-        return True
-    try:
-        toc_path, _kind = find_toc_for_folder(
-            os.path.join(addons_dir, folder), folder
-        )
-    except Exception:
-        return True
-    if not toc_path:
-        return True
-    try:
-        st = os.stat(toc_path)
-    except OSError:
-        return True
-    return (
-        snapshot.get("mtime_ns") != st.st_mtime_ns
-        or snapshot.get("size") != st.st_size
-    )
-
-
-def unit_for_folder(index: dict, folder: str) -> tuple[str | None, dict]:
-    """The ``(entry-id, unit)`` owning ``folder`` in the tracked-install
-    index, or ``(None, {})``. The single lookup the whole scan uses:
-    catalog gives the id, the index maps id → folders. Never raises."""
-    try:
-        units = index.get("units")
-        if isinstance(units, dict):
-            for eid, unit in units.items():
-                if not isinstance(unit, dict):
-                    continue
-                folders = unit.get("folders")
-                if isinstance(folders, list) and folder in folders:
-                    return eid, unit
-    except Exception:
-        pass
-    return None, {}
-
-
-def load_addons_index() -> dict:
-    """Load the tracked-install index (``{"units", "orphans"}``); the
-    corrupt-tolerant ``launcher`` loader never raises."""
-    return launcher.load_local_addons_index()
-
-
-def store_addons_index(index: dict) -> None:
-    """Persist the tracked-install index. Best effort — a failed write
-    only means the next scan rebuilds it."""
-    try:
-        launcher.store_local_addons_index(index)
-    except Exception as e:
-        log(f"  Could not save addon install index: {e}", "dim")

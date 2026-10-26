@@ -15,6 +15,7 @@ import shutil
 import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 from ..core import config_store
@@ -34,13 +35,6 @@ from ..state.models import AddonError, AddonsState, AddonState
 # Status message when the remote could not be reached to compare SHAs — a
 # transient state (rate limit, outage), distinct from a broken addon folder.
 C_COULD_NOT_CHECK = "Couldn't check for updates"
-
-# Serializes index read-modify-write cycles: the install worker
-# (_install_group/_install_direct), the uninstall worker
-# (_apply_pending_worker) and the scan rebuild (_reconcile_index) all
-# load → patch → store. Without this, an install landing mid-scan can be
-# clobbered by the scan's store.
-_INDEX_LOCK = threading.Lock()
 
 
 def _norm_folder(name) -> str:
@@ -77,21 +71,12 @@ def _index_available(available: list) -> tuple[dict, dict]:
     """Exact plus norm-keyed folder indexes over AVAILABLE rows.
 
     Exact match always wins at lookup time; the norm index is only the
-    fallback for variant spellings (case/whitespace/unicode). A row's
-    primary folder always beats another row's learned-set hit on the
-    same spelling (see _available_from_catalog) — set membership
-    fills gaps, never shadows primaries. Last row wins, mirroring
-    merge_addons override order."""
+    fallback for variant spellings (case/whitespace/unicode). Last row
+    wins, mirroring merge_addons override order."""
     by_folder: dict = {}
     by_norm: dict = {}
-    # Pass 1: primary slots. Pass 2: learned-set members that do not
-    # shadow a primary claim from another row.
     for row in available:
         by_folder.setdefault(row["folder"], row)
-    for row in available:
-        for sub in row.get("folders") or []:
-            if isinstance(sub, str) and sub and sub not in by_folder:
-                by_folder[sub] = row
     for row in available:
         key = _norm_folder(row.get("folder"))
         if key:
@@ -117,7 +102,9 @@ def _scan_disk_dirs(addons_dir: str) -> tuple[set, list]:
                 if not is_dir:
                     continue
                 name = entry.name
-                if name.startswith(("Blizzard_", "Turtle_", ".")):
+                if name.startswith(".") or name.lower().startswith(
+                    ("blizzard_", "turtle_")
+                ):
                     continue
                 seen.append(name)
         return set(seen), sorted(seen)
@@ -205,59 +192,23 @@ def _suppress_shadowed(available: list, installed_gits: dict) -> list:
             folder = row.get("folder") if isinstance(row, dict) else None
             key = _norm_folder(folder)
             git = row.get("git") if isinstance(row, dict) else None
-            folders = row.get("folders") if isinstance(row, dict) else None
-            if not isinstance(folders, list):
-                folders = [folder] if folder else []
-            hit = key and key in norms
-            if not hit:
-                try:
-                    hit = any(
-                        _norm_folder(f) in norms
-                        for f in folders
-                        if isinstance(f, str)
-                    )
-                except Exception:
-                    hit = False
         except Exception:
             kept.append(row)
             continue
-        # First overlapping installed folder decides (one unit per
-        # folder): its repo differentiates shadow from alternative.
-        other_git = None
-        other_folder = None
-        try:
-            for f, g in installed_gits.items():
-                if _norm_folder(f) == key or any(
-                    _norm_folder(s) == _norm_folder(f)
-                    for s in folders
-                    if isinstance(s, str)
-                ):
-                    other_git = g
-                    other_folder = f
-                    break
-        except Exception:
-            other_git = None
-        if other_folder is None:
-            kept.append(row)
-            continue
-        if not _gits_differ(other_git, git):
-            try:
+        if key and key in norms:
+            installed_git = norms[key]
+            if _gits_differ(installed_git, git):
+                # Different repo claiming the same folder spelling — keep
+                # the available row so the user can switch to it.
+                kept.append(row)
+            else:
                 log(
-                    f"  Addon {folder!r} shadows an installed folder — hiding."
+                    f"  Addon '{folder}' is already installed (spelling "
+                    f"variant) — omitting from Available.",
+                    "dim",
                 )
-            except Exception:
-                pass
-            continue
-        if isinstance(row, dict):
-            # Different repo, overlapping set: install alternative —
-            # say what it replaces (description renders today).
-            try:
-                base = row.get("description") or ""
-                hint = f"Installs over {other_folder} — replaces it."
-                row["description"] = f"{base} {hint}".strip() if base else hint
-            except Exception:
-                pass
-        kept.append(row)
+        else:
+            kept.append(row)
     return kept
 
 
@@ -341,25 +292,6 @@ class AddonsController:
             snapshot.available = [
                 AddonState.from_dict(rec) for rec in preview_rows
             ]
-            try:
-                fast_installed = self._fast_paint_installed(
-                    client, preview_rows
-                )
-            except Exception:
-                fast_installed = {}
-            if fast_installed:
-                # One row per install unit, keyed on entry id — the same
-                # collapse the scan publishes (per-folder toc optional).
-                fast_installed = self._collapse_units(fast_installed)
-                snapshot.addons = {
-                    folder: AddonState.from_dict(rec)
-                    for folder, rec in fast_installed.items()
-                }
-                snapshot.updates_count = sum(
-                    1
-                    for rec in fast_installed.values()
-                    if rec.get("status") == "outOfDate"
-                )
             self._dispatcher.post(AddonsLoaded(snapshot))
         else:
             self._dispatcher.post(AddonsLoaded(self.state))
@@ -388,146 +320,6 @@ class AddonsController:
         threading.Thread(target=worker, daemon=True).start()
         return True
 
-    def _fast_paint_installed(self, client: str, preview_rows: list) -> dict:
-        """Paint INSTALLED synchronously from index × AVAILABLE rows.
-
-        Network-free: index folder sets × the cached catalog (entry id →
-        row). Update status comes from the index entry's own sha against
-        the cached remote sha — never a live lookup, never a config
-        re-read. A missing/unconfirmed sha paints "unknown" (retryable),
-        never "up to date": the background scan is the only thing that
-        may claim up-to-date. Disk existence is assumed — drift
-        (hand-deleted folders, changed toc) is reconciled by the
-        background scan, which stays authoritative. Returns {} when there
-        is nothing to paint from."""
-        try:
-            index = addons.load_addons_index()
-        except Exception:
-            return {}
-        try:
-            units = index.get("units")
-            orphans = index.get("orphans")
-        except Exception:
-            return {}
-        if not isinstance(units, dict) or not units:
-            return {}
-        installed: dict = {}
-        by_id: dict = {}
-        try:
-            for row in preview_rows or []:
-                if not isinstance(row, dict):
-                    continue
-                eid = row.get("id")
-                if isinstance(eid, str) and eid:
-                    by_id[eid] = row
-        except Exception:
-            pass
-        for eid, unit in units.items():
-            if not isinstance(eid, str) or not eid:
-                continue
-            if not isinstance(unit, dict):
-                continue
-            folders = unit.get("folders")
-            if not isinstance(folders, list) or not folders:
-                continue
-            row = by_id.get(eid)
-            if row is None:
-                continue
-            source_type = row.get("source_type") or "git"
-            for folder in folders:
-                if not isinstance(folder, str) or not folder:
-                    continue
-                if folder in installed:
-                    continue
-                rec = {
-                    "folder": folder,
-                    "status": "unknown",
-                    "git": None,
-                    "branch": None,
-                    "ref": None,
-                    "source_type": source_type,
-                    "download_url": None,
-                    "toc": {},
-                    "description": None,
-                    "error": None,
-                    "id": eid,
-                    "folders": list(folders),
-                }
-                rec.update(
-                    git=row.get("git"),
-                    branch=row.get("branch"),
-                    ref=row.get("ref"),
-                    download_url=row.get("download_url"),
-                    description=row.get("description"),
-                    name=row.get("name") or None,
-                )
-                toc_snap = unit.get("toc")
-                title = ""
-                try:
-                    if isinstance(toc_snap, dict):
-                        title = (toc_snap.get(folder) or {}).get("title", "")
-                except Exception:
-                    title = ""
-                if isinstance(title, str) and title:
-                    rec["toc"] = {"Title": title}
-                indexed_sha = unit.get("sha")
-                if source_type == "direct":
-                    rec["status"] = "upToDate"
-                elif not isinstance(indexed_sha, str) or not indexed_sha:
-                    # No confirmed version on record — retryable, never
-                    # "up to date". Only the background scan may claim
-                    # up-to-date.
-                    rec["status"] = "unknown"
-                    rec["error"] = C_COULD_NOT_CHECK
-                else:
-                    git_url = rec.get("git")
-                    try:
-                        cached_sha = (
-                            addons.addon_cached_sha(
-                                git_url,
-                                rec.get("branch"),
-                                rec.get("ref"),
-                            )
-                            if isinstance(git_url, str) and git_url
-                            else None
-                        )
-                    except Exception:
-                        cached_sha = None
-                    if cached_sha is None:
-                        rec["status"] = "unknown"
-                        rec["error"] = C_COULD_NOT_CHECK
-                    elif cached_sha == indexed_sha:
-                        rec["status"] = "upToDate"
-                    else:
-                        rec["status"] = "outOfDate"
-                installed[folder] = rec
-        # Orphan folders the index knew but no group claims: list them as
-        # untracked-but-present so removal from a group never hides them.
-        try:
-            if isinstance(orphans, list):
-                for folder in orphans:
-                    if (
-                        not isinstance(folder, str)
-                        or not folder
-                        or folder in installed
-                    ):
-                        continue
-                    installed[folder] = {
-                        "folder": folder,
-                        "status": "unknown",
-                        "git": None,
-                        "branch": None,
-                        "ref": None,
-                        "source_type": "git",
-                        "download_url": None,
-                        "toc": {},
-                        "description": None,
-                        "error": None,
-                    }
-        except Exception:
-            pass
-        return installed
-
     def _discover_siblings(
         self, catalog_list, disk_names, records, force, addons_dir=""
     ) -> dict:
@@ -535,13 +327,12 @@ class AddonsController:
 
         One Git repo often ships several addons (AtlasLoot's seven
         modules): only the catalog's primary folder would otherwise match
-        and the rest would stay "Not tracked" forever. The tracked-install
-        index names the folder set per entry id (no archive fetch on the
-        update path); discovery still fetches an archive for a
-        *relevant but untracked* repo (its catalog folder is on disk, or a
-        snapjaw clone of it sits in `.snapjaw_cache`) and only when its
-        sha moved (cached otherwise), so unrelated catalog entries cost
-        nothing. Entries sharing one repo (git#branch/ref) resolve once.
+        and the rest would stay "Not tracked" forever. Discovery fetches a
+        repo archive only when the repo is relevant — its catalog folder is
+        on disk, a saved record points at the same repo, or a snapjaw
+        clone of it sits in `.snapjaw_cache` — and only when its sha moved
+        (cached otherwise), so unrelated catalog entries cost nothing.
+        Entries sharing one repo (git#branch/ref) resolve once.
         Never raises.
         """
         by_folder: dict = {}
@@ -562,52 +353,13 @@ class AddonsController:
             disk_norms.discard("")
         except Exception:
             pass
-        # Group by repo key so multi-folder repos resolve once. Units
-        # tracked in the index (by entry id) never hit the network —
-        # their folder sets are contributed below; only relevant but
-        # untracked repos fetch an archive.
-        indexed: dict = {}
-        indexed_ids = set()
-        try:
-            position = {
-                r.get("id"): r
-                for r in catalog_list
-                if isinstance(r, dict) and r.get("id")
-            }
-            index = addons.load_addons_index()
-            units = index.get("units")
-            if isinstance(units, dict):
-                for eid, unit in units.items():
-                    if not isinstance(eid, str) or not eid:
-                        continue
-                    if not isinstance(unit, dict):
-                        continue
-                    catalog_row = position.get(eid)
-                    if catalog_row is None:
-                        continue
-                    indexed_ids.add(eid)
-                    folders = unit.get("folders")
-                    if not isinstance(folders, list):
-                        continue
-                    for folder in folders:
-                        if (
-                            isinstance(folder, str)
-                            and folder
-                            and folder not in indexed
-                        ):
-                            indexed[folder] = catalog_row
-        except Exception:
-            indexed = {}
-            indexed_ids = set()
+        # Group by repo key so multi-folder repos resolve once.
         groups: dict = {}
         order: list = []
         for entry in catalog_list:
-            if entry.get("id") in indexed_ids:
-                continue
             git = entry.get("git")
             if not git:
                 continue
-            key = (git, entry.get("branch"), entry.get("ref"))
             relevant = (
                 _norm_folder(entry.get("name")) in disk_norms
                 or any(same_git_repo(saved, git) for saved in saved_gits)
@@ -615,28 +367,43 @@ class AddonsController:
             )
             if not relevant:
                 continue
+            key = (git, entry.get("branch"), entry.get("ref"))
             if key not in groups:
                 groups[key] = entry
                 order.append(key)
-        # Tracked groups name their siblings without any fetch.
-        try:
-            for folder, entry in indexed.items():
-                by_folder.setdefault(folder, entry)
-        except Exception:
-            pass
-        for key in order:
-            entry = groups[key]
-            try:
-                siblings = addons.addon_repo_names(
-                    entry.get("git"),
-                    entry.get("branch"),
-                    entry.get("ref"),
-                    force=force,
-                )
-            except Exception:
-                continue
-            for sibling in siblings:
-                by_folder.setdefault(sibling, entry)
+        if len(order) > 1:
+
+            def _fetch_sibling(key):
+                entry = groups[key]
+                try:
+                    return key, addons.addon_repo_names(
+                        entry.get("git"),
+                        entry.get("branch"),
+                        entry.get("ref"),
+                        force=force,
+                    )
+                except Exception:
+                    return key, []
+
+            with ThreadPoolExecutor(max_workers=min(6, len(order))) as pool:
+                for key, siblings in pool.map(_fetch_sibling, order):
+                    entry = groups[key]
+                    for sibling in siblings:
+                        by_folder.setdefault(sibling, entry)
+        else:
+            for key in order:
+                entry = groups[key]
+                try:
+                    siblings = addons.addon_repo_names(
+                        entry.get("git"),
+                        entry.get("branch"),
+                        entry.get("ref"),
+                        force=force,
+                    )
+                except Exception:
+                    continue
+                for sibling in siblings:
+                    by_folder.setdefault(sibling, entry)
         return by_folder
 
     def _verify_worker_body(self, catalog_list, client, force, remote_checks):
@@ -664,6 +431,58 @@ class AddonsController:
             ap,
             remote_checks,
         )
+        if remote_checks:
+            needed = set()
+            for name in dir_names:
+                saved = records.get(name)
+                saved_git = (
+                    saved.get("git") if isinstance(saved, dict) else None
+                )
+                avail = _lookup_available(
+                    name,
+                    saved_git,
+                    by_folder,
+                    by_norm,
+                    siblings,
+                    siblings_by_norm,
+                )
+                git, branch, ref = None, None, None
+                if saved and isinstance(saved, dict) and saved.get("git"):
+                    if avail and same_git_repo(saved["git"], avail.get("git")):
+                        git = avail.get("git")
+                        branch = avail.get("branch")
+                        ref = avail.get("ref")
+                    elif (
+                        not avail
+                        and (saved.get("source_type") or "git") != "direct"
+                    ):
+                        git = saved.get("git")
+                        branch = saved.get("branch")
+                        ref = saved.get("ref")
+                elif avail and (avail.get("source_type") or "git") != "direct":
+                    git = avail.get("git")
+                    branch = avail.get("branch")
+                    ref = avail.get("ref")
+                if git and addons.is_allowed_git_url(git):
+                    needed.add((git, branch, ref))
+            if len(needed) > 1:
+
+                def _fetch_sha(k):
+                    g, b, r = k
+                    try:
+                        return k, addons.addon_remote_sha(g, b, r, force=force)
+                    except Exception:
+                        return k, None
+
+                with ThreadPoolExecutor(
+                    max_workers=min(6, len(needed))
+                ) as pool:
+                    for k, remote in pool.map(_fetch_sha, needed):
+                        sha_memo[(k[0], k[1], k[2], bool(force), True)] = (
+                            remote
+                        )
+
+        adopted: dict = {}
         for name in dir_names:
             rec = {
                 "folder": name,
@@ -707,182 +526,41 @@ class AddonsController:
                 rec["description"] = avail["description"]
                 rec["name"] = avail.get("name") or None
                 rec["id"] = avail.get("id") or None
-            else:
-                # No catalog hit: the folder may still belong to a
-                # tracked unit (hand-dropped sub-folder). The index
-                # keyed by entry id is the membership source; when the
-                # index has no entry, fall back to a catalog entry whose
-                # git matches the saved record so manually-tracked or
-                # pre-existing installs still collapse into their unit.
-                try:
-                    eid, _folders = addons.unit_for_folder(
-                        addons.load_addons_index(), name
-                    )
-                    rec["id"] = eid
-                except Exception:
-                    pass
-                if not rec.get("id"):
-                    # Fall back: a catalog entry whose git matches the
-                    # saved record owns this folder's unit.
-                    try:
-                        saved_git = (
-                            saved.get("git")
-                            if isinstance(saved, dict)
-                            else None
-                        )
-                        if saved_git:
-                            for arow in available:
-                                if (
-                                    isinstance(arow, dict)
-                                    and arow.get("id")
-                                    and arow.get("git")
-                                    and same_git_repo(arow["git"], saved_git)
-                                ):
-                                    rec["id"] = arow["id"]
-                                    break
-                            if (
-                                not rec.get("id")
-                                and isinstance(saved, dict)
-                                and saved.get("git")
-                            ):
-                                # Custom entry (saved source, no catalog
-                                # row): the folder name is the unit key.
-                                rec["id"] = name
-                    except Exception:
-                        pass
             self._reconcile_rec(
-                rec, name, saved, avail, force, remote_checks, sha_memo
+                rec,
+                name,
+                saved,
+                avail,
+                force,
+                remote_checks,
+                sha_memo,
+                adopted,
             )
             installed[name] = rec
 
-        self._reconcile_index(installed, records, ap, sha_memo)
+        # The filesystem is authoritative: drop saved records for folders
+        # no longer present on disk, and batch-save newly adopted ones.
+        disk_set = set(dir_names)
+        stale_records = [k for k in records if k not in disk_set]
+        if adopted or stale_records:
+            to_add = dict(adopted)
+            to_drop = tuple(stale_records)
+
+            def _sync_cfg(c):
+                cfg_addons = c.setdefault("addons", {})
+                if isinstance(cfg_addons, dict):
+                    for k, v in to_add.items():
+                        cfg_addons[k] = v
+                    for d in to_drop:
+                        cfg_addons.pop(d, None)
+                return c
+
+            try:
+                config_store.update_config(_sync_cfg)
+            except Exception:
+                pass
+
         self._finish_scan(installed, available)
-
-    def _reconcile_index(
-        self, installed: dict, records: dict, addons_dir: str, sha_memo: dict
-    ) -> None:
-        """Patch the tracked-install index from scan truth, persist once.
-
-        Units are keyed by catalog entry id: scanned folders with a
-        resolved entry id join that id's unit; folders with no id pass
-        through (untracked). Drop: index folders absent from disk leave
-        the unit (except when the scan still claims them on disk —
-        the orphan independence win: custom/removed-upstream installs
-        stay listed + update-checkable against saved git). Refresh:
-        changed toc snapshots are re-read. Never raises — the index is
-        a cache, the disk scan stays authoritative. Serialized with
-        the install/uninstall writers via _INDEX_LOCK."""
-        try:
-            with _INDEX_LOCK:
-                index = addons.load_addons_index()
-                units = index.get("units")
-                if not isinstance(units, dict):
-                    units = {}
-                    index["units"] = units
-                disk_names = set(installed)
-                # Map every scanned folder to its owning entry id: the
-                # scan's id (catalog hit, sibling adopt, or the index's
-                # own unit for hand-dropped sub-folders).
-                owner_of: dict = {}
-                for name, rec in installed.items():
-                    if not isinstance(rec, dict):
-                        continue
-                    eid = rec.get("id")
-                    if isinstance(eid, str) and eid:
-                        owner_of[name] = eid
-                # Adopt / refresh scanned folders into their owning
-                # unit: the scan's set is truth, so the unit keeps
-                # exactly the folders currently on disk (a hand-deleted
-                # folder drops out instead of lingering as a phantom).
-                grouped: dict = {}
-                for name, eid in owner_of.items():
-                    grouped.setdefault(eid, []).append(name)
-                for eid, names in grouped.items():
-                    unit = units.get(eid)
-                    if not isinstance(unit, dict):
-                        unit = {}
-                        units[eid] = unit
-                    folders = unit.get("folders")
-                    if not isinstance(folders, list):
-                        folders = []
-                    prev = [f for f in folders if f not in names]
-                    unit["folders"] = sorted(set(names))
-                    # shortcut: shipped set replaces the want (the archive
-                    # is truth); the previous set survives one scan as
-                    # prev_folders so a vanished-upstream sub-addon flags
-                    # instead of silently shrinking.
-                    if prev:
-                        unit["prev_folders"] = sorted(set(prev) - set(names))
-                    rec0 = installed.get(names[0]) or {}
-                    if isinstance(rec0, dict):
-                        if rec0.get("git"):
-                            unit["sha"] = None
-                            saved = (
-                                records.get(names[0])
-                                if isinstance(records, dict)
-                                else None
-                            )
-                            saved_sha = (
-                                saved.get("sha")
-                                if isinstance(saved, dict)
-                                else None
-                            )
-                            if isinstance(saved_sha, str) and saved_sha:
-                                unit["sha"] = saved_sha
-                    try:
-                        claimed = unit.get("claimed_at")
-                        if not isinstance(claimed, dict):
-                            claimed = {}
-                            unit["claimed_at"] = claimed
-                        import time as _time
-
-                        now = _time.time()
-                        for name in names:
-                            claimed[name] = now
-                        unit.setdefault("installed_at", now)
-                    except Exception:
-                        pass
-                    try:
-                        toc = unit.get("toc")
-                        if not isinstance(toc, dict):
-                            toc = {}
-                            unit["toc"] = toc
-                        for name in names:
-                            snap = toc.get(name)
-                            if addons.toc_snapshot_changed(
-                                addons_dir, name, snap
-                            ):
-                                toc.update(
-                                    addons.snapshot_toc_dir(addons_dir, name)
-                                )
-                    except Exception:
-                        pass
-                # Drop index folders missing from disk (hand-deleted).
-                # Adopt runs first so a unit the scan still claims keeps
-                # its scanned set; anything left over with no folders
-                # on disk is pruned.
-                for eid in list(units):
-                    unit = units.get(eid)
-                    if not isinstance(unit, dict):
-                        units.pop(eid, None)
-                        continue
-                    folders = unit.get("folders")
-                    if not isinstance(folders, list):
-                        unit["folders"] = []
-                        folders = []
-                    if not folders:
-                        continue
-                    if any(f in disk_names for f in folders):
-                        continue
-                    if any(
-                        owner_of.get(f) == eid and f in disk_names
-                        for f in folders
-                    ):
-                        continue
-                    units.pop(eid, None)
-                addons.store_addons_index(index)
-        except Exception:
-            return
 
     def _adopt_sibling_rows(
         self,
@@ -942,7 +620,15 @@ class AddonsController:
         return siblings, siblings_by_norm
 
     def _reconcile_rec(
-        self, rec, name, saved, avail, force, remote_checks, sha_memo
+        self,
+        rec,
+        name,
+        saved,
+        avail,
+        force,
+        remote_checks,
+        sha_memo,
+        adopted=None,
     ) -> None:
         """Set a scanned folder's source and status (mutates ``rec``).
 
@@ -1065,18 +751,19 @@ class AddonsController:
             )
             if avail_source == "direct":
                 rec["status"] = "upToDate"
-                config_store.update_config(
-                    lambda c, f=name, a=avail: c.setdefault(
-                        "addons", {}
-                    ).__setitem__(
-                        f,
-                        {
-                            "git": a.get("git"),
-                            "source_type": "direct",
-                            "download_url": a.get("download_url"),
-                        },
+                record = {
+                    "git": avail.get("git"),
+                    "source_type": "direct",
+                    "download_url": avail.get("download_url"),
+                }
+                if adopted is not None:
+                    adopted[name] = record
+                else:
+                    config_store.update_config(
+                        lambda c, f=name, r=record: c.setdefault(
+                            "addons", {}
+                        ).__setitem__(f, r)
                     )
-                )
                 return
             remote = self._resolve_remote_sha(
                 avail["git"],
@@ -1088,19 +775,20 @@ class AddonsController:
             )
             if remote:
                 rec["status"] = "upToDate"
-                config_store.update_config(
-                    lambda c, f=name, g=avail["git"], b=avail["branch"], r=avail["ref"], s=remote: (
-                        c.setdefault("addons", {}).__setitem__(
-                            f,
-                            {
-                                "git": g,
-                                "branch": b,
-                                "ref": r,
-                                "sha": s,
-                            },
-                        )
+                record = {
+                    "git": avail["git"],
+                    "branch": avail["branch"],
+                    "ref": avail["ref"],
+                    "sha": remote,
+                }
+                if adopted is not None:
+                    adopted[name] = record
+                else:
+                    config_store.update_config(
+                        lambda c, f=name, r=record: c.setdefault(
+                            "addons", {}
+                        ).__setitem__(f, r)
                     )
-                )
             else:
                 rec.update(status="unknown", error=C_COULD_NOT_CHECK)
 
@@ -1130,114 +818,7 @@ class AddonsController:
             for name, rec in installed.items()
         }
         available = _suppress_shadowed(available, installed_gits)
-        installed = self._collapse_units(installed)
         self._finish_verify(installed, available)
-
-    _UNIT_STATUS_RANK = {
-        "invalid": 0,
-        "outOfDate": 1,
-        "unknown": 2,
-        "upToDate": 3,
-    }
-
-    def _collapse_units(self, installed: dict) -> dict:
-        """Merge per-disk-folder scan rows into one row per install unit.
-
-        Folders whose rows share one entry id (learned set) collapse to
-        the primary folder's row: `folders` lists the set, status is
-        worst-of (invalid > outOfDate > unknown > upToDate), and a
-        partially-present set reports outOfDate + "missing: X" so
-        Repair reinstalls the unit. Rows without a shared id
-        (untracked, single-error rows) pass through untouched.
-        Keys on entry id — per-folder toc optional, so the
-        fast paint reuses this without disk data. Never raises."""
-        try:
-            groups: dict = {}
-            order: list = []
-            passthrough: dict = {}
-            for name, rec in installed.items():
-                eid = None
-                try:
-                    if isinstance(rec, dict):
-                        eid = rec.get("id")
-                except Exception:
-                    eid = None
-                if not eid or not isinstance(rec, dict):
-                    passthrough[name] = rec
-                    continue
-                if eid not in groups:
-                    groups[eid] = []
-                    order.append(eid)
-                groups[eid].append((name, rec))
-            if not any(len(g) > 1 for g in groups.values()):
-                return installed
-            collapsed: dict = dict(passthrough)
-            for eid in order:
-                members = groups[eid]
-                if len(members) == 1:
-                    name, rec = members[0]
-                    collapsed[name] = rec
-                    continue
-                # Primary is the row whose folder is the catalog entry's
-                # own folder (or matches the entry id for folder-keyed
-                # customs); alphabetical order must never promote a
-                # helper folder like !Libs to the unit title.
-                primary = members[0][0]
-                for mname, mrec in members:
-                    slot = mrec.get("folder") or mname
-                    if slot == eid or mname == eid:
-                        primary = mname
-                        break
-                else:
-                    cat = self._available_row_for(eid) or {}
-                    try:
-                        want = (
-                            cat.get("folder")
-                            if isinstance(cat, dict)
-                            else None
-                        )
-                    except Exception:
-                        want = None
-                    if isinstance(want, str) and want:
-                        for mname, _mrec in members:
-                            if mname == want:
-                                primary = mname
-                                break
-                members.sort(
-                    key=lambda m: (
-                        0 if (m[1].get("folder") or m[0]) == primary else 1,
-                        m[0],
-                    )
-                )
-                rank = 3
-                merged_toc: dict = {}
-                for mname, mrec in members:
-                    st = mrec.get("status") or "upToDate"
-                    rank = min(rank, self._UNIT_STATUS_RANK.get(st, 3))
-                    try:
-                        if isinstance(mrec.get("toc"), dict):
-                            merged_toc[mname] = mrec["toc"]
-                    except Exception:
-                        pass
-                status = next(
-                    s for s, r in self._UNIT_STATUS_RANK.items() if r == rank
-                )
-                base = dict(members[0][1])
-                base["status"] = status
-                base["folders"] = [m[0] for m in members]
-                base["toc"] = merged_toc
-                # shortcut: missing-subfolder list is best-effort (a
-                # hand-deleted folder simply absent from the scan); the
-                # outOfDate flag is what triggers Repair.
-                if status == "outOfDate":
-                    base["description"] = (
-                        (base.get("description") or "")
-                        + " Missing sub-folders? Reinstall to repair."
-                    ).strip()
-                collapsed[primary] = base
-            return collapsed
-        except Exception:
-            return installed
 
     def _available_from_catalog(self, catalog_list: list) -> list:
         """Map catalog entries to AVAILABLE row dicts: curated blocked
@@ -1249,12 +830,6 @@ class AddonsController:
         available = []
         by_id: dict = {}
         by_folder: dict = {}
-        try:
-            _idx = addons.load_addons_index()
-            _iu = _idx.get("units")
-            learned_units = _iu if isinstance(_iu, dict) else {}
-        except Exception:
-            learned_units = {}
         for a in catalog_list:
             folder = a.get("folder") or a.get("name")
             if not folder:
@@ -1286,16 +861,11 @@ class AddonsController:
             # Identity is the entry id (later layers win, mirroring
             # merge_addons override order). Sharing one folder declares
             # a variant group — both rows are kept, install = replace.
-            # The row carries the index-learned folder set when known
-            # (multi-folder unit, keyed by entry id), else the single
-            # primary slot.
-            folders = self._learned_folders_for(eid, learned_units) or [folder]
             rec = {
                 "folder": folder,
                 "id": eid,
                 "name": a.get("name") or None,
                 "status": "available",
-                "folders": list(folders),
                 "git": a.get("git"),
                 "source_type": a.get("source_type") or "git",
                 "download_url": a.get("download_url"),
@@ -1340,27 +910,6 @@ class AddonsController:
             elif rec.get("git") != override:
                 rec.update(git=override, branch=None, ref=None)
         return available
-
-    def _learned_folders_for(self, eid: str, units=None) -> list:
-        """The folder set an AVAILABLE row installs as a unit: the
-        tracked-install index unit for the entry id contributes its
-        learned `folders`; unknown ids yield [] (caller falls back to
-        the row's primary slot). Never raises."""
-        try:
-            if units is None:
-                index = addons.load_addons_index()
-                units = index.get("units")
-            unit = units.get(eid) if isinstance(units, dict) else None
-            folders = unit.get("folders") if isinstance(unit, dict) else None
-            if isinstance(folders, list):
-                cleaned = sorted(
-                    {f for f in folders if isinstance(f, str) and f}
-                )
-                if cleaned:
-                    return cleaned
-        except Exception:
-            pass
-        return []
 
     def _overlay_errors(self, available: list):
         """Re-attach session install errors to their AVAILABLE rows,
@@ -1622,15 +1171,6 @@ class AddonsController:
                     )
                     out.append(dep_rec)
                     queue.append(dep_rec)
-                    try:
-                        # Pull the dep's whole folder set: installing the
-                        # id installs the unit (same index-learned set
-                        # the row would install from the panel).
-                        for f in dep_rec.get("folders") or []:
-                            if isinstance(f, str) and f:
-                                seen.add(f)
-                    except Exception:
-                        pass
             return out
         except Exception:
             return list(recs)
@@ -1656,155 +1196,6 @@ class AddonsController:
         self.state.state = "idle"
 
     # ── internals ───────────────────────────────────────────────────────────
-
-    # ── tracked-install index (keyed by catalog entry id) ─────────────
-
-    def _index_record_install(
-        self,
-        sha: str | None,
-        folders: list,
-        group: list | None = None,
-    ) -> None:
-        """Record a successful install into the tracked-install index,
-        keyed by catalog entry id: ``{id: {folders, sha, toc, ...}}``.
-        The catalog gives the id; install time teaches the index which
-        folders that id ships. The shipped set REPLACES the want (the
-        archive is truth); the previous set survives one scan as
-        ``prev_folders`` so a vanished-upstream sub-addon flags instead
-        of silently shrinking. A folder owned by another unit (variant
-        switch) is dropped from the old unit — folder → single owning
-        unit invariant — and the loser's saved records for moved folders
-        are removed so no phantom survives. Serialized with the scan
-        rebuild via _INDEX_LOCK so an install landing mid-scan
-        survives."""
-        try:
-            with _INDEX_LOCK:
-                index = addons.load_addons_index()
-                units = index.get("units")
-                if not isinstance(units, dict):
-                    units = {}
-                    index["units"] = units
-                eid = None
-                try:
-                    for src in group or []:
-                        if isinstance(src, dict) and src.get("id"):
-                            eid = str(src["id"])
-                            break
-                    if eid is None:
-                        for f in folders:
-                            r = self._available_row_for(f)
-                            if (
-                                isinstance(r, dict)
-                                and r.get("id")
-                                and r.get("folder") == f
-                            ):
-                                eid = str(r["id"])
-                                break
-                except Exception:
-                    eid = None
-                if not eid:
-                    return
-                client = (self._get_out_dir() or "").strip()
-                ap = addons.addons_path(client) if client else ""
-                try:
-                    import time as _time
-
-                    now = _time.time()
-                except Exception:
-                    now = 0.0
-                prev = units.get(eid)
-                prev_folders = (
-                    prev.get("folders") if isinstance(prev, dict) else None
-                )
-                if not isinstance(prev_folders, list):
-                    prev_folders = []
-                unit: dict = {
-                    "folders": sorted(set(folders)),
-                    "prev_folders": sorted(
-                        {f for f in prev_folders if isinstance(f, str) and f}
-                        - set(folders)
-                    ),
-                    "sha": sha,
-                    "toc": addons.snapshot_toc_folders(ap, folders),
-                    "claimed_at": {
-                        f: now for f in folders if isinstance(f, str)
-                    },
-                }
-                try:
-                    unit["installed_at"] = now
-                except Exception:
-                    pass
-                owned: set = set(folders)
-                for other_id in list(units):
-                    if other_id == eid:
-                        continue
-                    other = units.get(other_id)
-                    if not isinstance(other, dict):
-                        continue
-                    other_folders = other.get("folders")
-                    if not isinstance(other_folders, list):
-                        continue
-                    kept = [f for f in other_folders if f not in owned]
-                    if len(kept) != len(other_folders):
-                        moved = [f for f in other_folders if f in owned]
-                        try:
-                            claimed = other.get("claimed_at")
-                            if isinstance(claimed, dict):
-                                for f in moved:
-                                    claimed.pop(f, None)
-                        except Exception:
-                            pass
-                        try:
-                            moved_t = tuple(moved)
-
-                            def _drop_moved(cfg, ms=moved_t):
-                                recs = cfg.get("addons")
-                                if isinstance(recs, dict):
-                                    for m in ms:
-                                        recs.pop(m, None)
-                                return cfg
-
-                            config_store.update_config(_drop_moved)
-                        except Exception:
-                            pass
-                        if kept:
-                            other["folders"] = sorted(set(kept))
-                        else:
-                            units.pop(other_id, None)
-                units[eid] = unit
-                orphans = index.get("orphans")
-                if isinstance(orphans, list) and owned:
-                    index["orphans"] = [o for o in orphans if o not in owned]
-                addons.store_addons_index(index)
-        except Exception:
-            return
-
-    def _index_drop_folder(self, folder: str) -> None:
-        """Drop one folder from the tracked-install index (uninstall)."""
-        try:
-            with _INDEX_LOCK:
-                index = addons.load_addons_index()
-                units = index.get("units")
-                if not isinstance(units, dict):
-                    return
-                changed = False
-                for k in list(units):
-                    entry = units.get(k)
-                    if not isinstance(entry, dict):
-                        continue
-                    folders = entry.get("folders")
-                    if not isinstance(folders, list) or folder not in folders:
-                        continue
-                    kept = [f for f in folders if f != folder]
-                    if kept:
-                        entry["folders"] = kept
-                    else:
-                        units.pop(k, None)
-                    changed = True
-                if changed:
-                    addons.store_addons_index(index)
-        except Exception:
-            return
 
     def _available_row_for(self, folder: str) -> dict | None:
         """The current AVAILABLE row whose PRIMARY folder matches,
@@ -1846,7 +1237,7 @@ class AddonsController:
         self._dispatcher.post(AddonsLoaded(self.state))
 
     def _install_direct(
-        self, client: str, url: str, folders: list, group: list | None = None
+        self, client: str, url: str, folders: list
     ) -> list[str]:
         """Fetch one prebuilt archive and install every requested folder
         from it. Records each installed folder against its URL and flips
@@ -1893,8 +1284,6 @@ class AddonsController:
             for rec in self.state.addons.values()
             if rec.status == "outOfDate"
         )
-        if installed:
-            self._index_record_install(None, installed, group)
         return installed
 
     def _install_group(
@@ -1904,7 +1293,6 @@ class AddonsController:
         branch,
         ref,
         folders: list,
-        group: list | None = None,
     ) -> list[str]:
         """Fetch one repo archive and install every requested folder from
         it. Records each installed folder against the repo's sha and flips
@@ -1965,8 +1353,6 @@ class AddonsController:
             for rec in self.state.addons.values()
             if rec.status == "outOfDate"
         )
-        if installed:
-            self._index_record_install(sha, installed, group)
         return installed
 
     def _fail_group(self, folders: list, git, err: str) -> None:
@@ -2005,38 +1391,21 @@ class AddonsController:
         failed = []
         for key, group in self._group_recs(recs):
             kind = key[0]
-            # The unit is the row's learned folder set when known,
-            # else the single primary slot.
-            folders = sorted(
-                {
-                    f
-                    for rec in group
-                    for f in (
-                        rec.get("folders")
-                        if isinstance(rec.get("folders"), list)
-                        else [rec["folder"]]
-                    )
-                    if isinstance(f, str) and f
-                }
-            )
-            if not folders:
-                continue
+            folders = [rec["folder"] for rec in group]
             self._dispatcher.post(StatusChanged(f"Installing {folders[0]}…"))
             try:
                 if kind == "direct":
                     url = key[1]
                     if not url:
                         raise RuntimeError("Addon has no direct download URL")
-                    self._install_direct(client, url, folders, group)
+                    self._install_direct(client, url, folders)
                 else:
                     git, branch, ref = key[1], key[2], key[3]
                     if not git or not addons.is_allowed_git_url(git):
                         raise RuntimeError(
                             "Addon URL is not from an allowed git host"
                         )
-                    self._install_group(
-                        client, git, branch, ref, folders, group
-                    )
+                    self._install_group(client, git, branch, ref, folders)
                 self._dispatcher.post(AddonsLoaded(self.state))
             except Exception as e:
                 err = describe_install_error(e)
@@ -2064,80 +1433,36 @@ class AddonsController:
             # user just installed).
             self.verify(remote_checks=False)
 
-    def _unit_folders_for(self, folder: str) -> list:
-        """The disk folders one pending tick removes: the row's learned
-        set when known, else the single folder. Pending is keyed by
-        primary folder; the tick expands to the unit. Never raises."""
-        try:
-            st = self.state.addons.get(folder)
-            folders = getattr(st, "folders", None)
-            if isinstance(folders, list):
-                cleaned = sorted(
-                    {f for f in folders if isinstance(f, str) and f}
-                )
-                if cleaned:
-                    return cleaned
-            for row in self.state.available or []:
-                try:
-                    name = (
-                        row.get("folder")
-                        if isinstance(row, dict)
-                        else getattr(row, "folder", None)
-                    )
-                    if name != folder:
-                        continue
-                    rfolders = (
-                        row.get("folders")
-                        if isinstance(row, dict)
-                        else getattr(row, "folders", None)
-                    )
-                    if isinstance(rfolders, list):
-                        cleaned = sorted(
-                            {f for f in rfolders if isinstance(f, str) and f}
-                        )
-                        if cleaned:
-                            return cleaned
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        return [folder]
-
     def _apply_pending_worker(self, client: str):
         """Remove addons staged (ticked) for uninstall."""
         pending = self.state.pending
         failed = []
 
         # Only uninstall ticks are acted on — installs come from the
-        # Browse dialog via apply(), never through pending. Pending is
-        # keyed by primary folder; the tick expands to the unit's
-        # learned set at apply time.
+        # Browse dialog via apply(), never through pending.
         for folder, pend in list(pending.items()):
             if getattr(pend, "enabled", pend) is not False:
                 continue
-            targets = self._unit_folders_for(folder)
-            for target in targets:
-                try:
-                    dirp = os.path.join(addons.addons_path(client), target)
-                    if os.path.isdir(dirp):
-                        shutil.rmtree(dirp)
-                    config_store.update_config(
-                        lambda c, f=target: c.get("addons", {}).pop(f, None)
+            try:
+                dirp = os.path.join(addons.addons_path(client), folder)
+                if os.path.isdir(dirp):
+                    shutil.rmtree(dirp)
+                config_store.update_config(
+                    lambda c, f=folder: c.get("addons", {}).pop(f, None)
+                )
+                self.state.addons.pop(folder, None)
+                self.state.errors.pop(folder, None)
+                self._dispatcher.post(
+                    LogMessage(f"Removed addon {folder}\n", "dim")
+                )
+            except Exception as e:
+                err = describe_install_error(e)
+                self._dispatcher.post(
+                    LogMessage(
+                        f"Failed to remove addon {folder}: {err}", "err"
                     )
-                    self.state.addons.pop(target, None)
-                    self.state.errors.pop(target, None)
-                    self._index_drop_folder(target)
-                    self._dispatcher.post(
-                        LogMessage(f"Removed addon {target}\n", "dim")
-                    )
-                except Exception as e:
-                    err = describe_install_error(e)
-                    self._dispatcher.post(
-                        LogMessage(
-                            f"Failed to remove addon {target}: {err}", "err"
-                        )
-                    )
-                    failed.append(target)
+                )
+                failed.append(folder)
 
         self.state.pending = {}
         self.state.busy = False

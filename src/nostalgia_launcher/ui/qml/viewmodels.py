@@ -688,7 +688,10 @@ class UpdateViewState(QObject):
             self._files.set_files(event.files or [])
 
     def on_status(self, text: str):
-        if text in ("Verifying…", "Updating…"):
+        if text == "Verifying…":
+            self._set_phase(text)
+            self._set_file("Verifying client files…")
+        elif text == "Updating…":
             self._set_phase(text)
             self._set_file("Preparing client update…")
 
@@ -697,6 +700,14 @@ class UpdateViewState(QObject):
             self._set_visible(False)
             if ok:
                 self._set_phase("Verified" if kind == "verify" else "Complete")
+                self._set_file(
+                    message
+                    or (
+                        "All files verified."
+                        if kind == "verify"
+                        else "Client is up to date."
+                    )
+                )
                 self._files.mark_all_done()
             else:
                 self._set_phase(
@@ -708,6 +719,7 @@ class UpdateViewState(QObject):
             self._set_file("Mods complete; checking addons…")
         elif kind == "addons" and ok:
             self._set_phase("Complete")
+            self._set_file(message or "Addons up to date.")
 
     def on_failed(self, kind: str, message: str):
         if kind in ("update", "verify"):

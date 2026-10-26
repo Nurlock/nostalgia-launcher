@@ -1497,3 +1497,18 @@ def test_group_recs_splits_direct_by_url(controller):
     )
     assert len(groups) == 3
     assert [rec["folder"] for _, g in groups for rec in g] == ["A", "B", "C"]
+
+
+def test_scan_disk_dirs_ignores_blizzard_turtle_and_files(tmp_path):
+    addons_dir = tmp_path / "Interface" / "AddOns"
+    addons_dir.mkdir(parents=True)
+    (addons_dir / "Questie").mkdir()
+    (addons_dir / "Blizzard_CombatText").mkdir()
+    (addons_dir / "blizzard_raidui").mkdir()
+    (addons_dir / "Turtle_Shop").mkdir()
+    (addons_dir / ".git").mkdir()
+    (addons_dir / "notes.txt").write_text("not a folder")
+
+    seen_set, seen_list = ac._scan_disk_dirs(str(addons_dir))
+    assert seen_set == {"Questie"}
+    assert seen_list == ["Questie"]

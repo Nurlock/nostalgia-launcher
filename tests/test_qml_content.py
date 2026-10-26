@@ -257,6 +257,48 @@ def test_toggle_echo_guard(model):
     assert calls == [("a", False)]
 
 
+def test_toggle_emits_datachanged_not_modelreset(model):
+    """Updating row state must emit dataChanged in place rather than
+    resetting the model (which would scroll the QML ListView to the top)."""
+    _snapshot(model)
+    resets = []
+    changes = []
+    model.modelReset.connect(lambda: resets.append(True))
+    model.dataChanged.connect(
+        lambda tl, br, _r: changes.append((tl.row(), br.row()))
+    )
+
+    updated_rows = [
+        {
+            "eid": "a",
+            "name": "Alpha",
+            "description": "shiny alpha",
+            "repoUrl": "",
+            "installed": True,
+            "enabled": False,
+            "serverManaged": False,
+            "staged": False,
+            "needsUpdate": False,
+        },
+        {
+            "eid": "b",
+            "name": "Beta",
+            "description": "beta things",
+            "repoUrl": "",
+            "installed": False,
+            "enabled": False,
+            "serverManaged": False,
+            "staged": False,
+            "needsUpdate": False,
+        },
+    ]
+    model.set_snapshot(updated_rows)
+    assert resets == []
+    assert len(changes) == 1
+    assert changes[0] == (0, 0)
+    assert model.data(model.index(0, 0), ContentListModel.EnabledRole) is False
+
+
 def test_apply_reload(model):
     calls = []
     model.set_handlers(
@@ -347,6 +389,17 @@ def test_content_tabs_load(engine):
     root = eng.rootObjects()[0]
     assert len(root.findChildren(QObject, "qmlContentView")) == 3
     assert root.findChild(QObject, "qmlNavBar") is not None
+
+
+def test_content_view_has_scrollbar(engine):
+    eng, _mods, _assets = engine
+    root = eng.rootObjects()[0]
+    scrollbars = root.findChildren(QObject, "qmlContentScrollBar")
+    assert len(scrollbars) == 3
+    lists = root.findChildren(QObject, "qmlContentList")
+    assert len(lists) == 3
+    for lst in lists:
+        assert lst.findChild(QObject, "qmlContentScrollBar") is not None
 
 
 def test_mods_tab_follows_model(engine):

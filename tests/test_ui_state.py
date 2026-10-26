@@ -54,7 +54,6 @@ def test_addons_state_defaults():
     assert a.installing is False
     assert a.verified_ts == 0.0
     assert a.errors == {}
-    assert a.sections_open == {"INSTALLED": True, "AVAILABLE": True}
     assert a.updates_count == 0
 
 
@@ -63,8 +62,6 @@ def test_settings_state_defaults():
     assert s.path == ""
     assert s.config == {}
     assert s.first_run is False
-    assert s.first_run_av_pending is False
-    assert s.first_run_verify_pending is False
 
 
 # ── update flow ───────────────────────────────────────────────────────────
@@ -222,11 +219,7 @@ def test_settings_state_with_sample_data():
         path="C:/Games/WoW",
         config={"out_dir": "C:/Games/WoW"},
         first_run=True,
-        first_run_av_pending=True,
-        first_run_verify_pending=True,
     )
     assert s.path == "C:/Games/WoW"
     assert s.config["out_dir"] == "C:/Games/WoW"
     assert s.first_run is True
-    assert s.first_run_av_pending is True
-    assert s.first_run_verify_pending is True

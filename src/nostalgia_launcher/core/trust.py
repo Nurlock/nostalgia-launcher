@@ -60,7 +60,7 @@ def _embedded_hosts(config) -> list[str]:
 def trust_hosts(config) -> list[str]:
     """Every host the launcher would contact under this configuration.
 
-    Covers the registry/feed/download endpoints, the Discord button, the
+    Covers the registry/feed/download endpoints, the community button, the
     theme logo, and URLs embedded directly in the configuration. Sorted
     and de-duplicated; network-free.
     """
@@ -74,7 +74,8 @@ def trust_hosts(config) -> list[str]:
         config.assets_registry_url,
         config.download_fallback_url or "",
         config.download_torrent_url or "",
-        config.discord_url or "",
+        config.community_url or "",
+        (config.download_manifest or {}).get("url", ""),
     ]
     for url in urls:
         h = _host(url)
@@ -90,21 +91,53 @@ def trust_hosts(config) -> list[str]:
     return hosts
 
 
-def _catalog_summary(explicit_url: bool, embedded: int) -> str:
-    """One-line description of where a content category comes from:
-    remote catalog URL(s), embedded entries, or both."""
-    if explicit_url and embedded:
-        return f"catalog + {embedded} embedded"
+def _catalog_summary(
+    explicit_url: bool, embedded: int, manifest: int = 0
+) -> str:
+    """One-line description of where community content comes from:
+    remote catalog URL(s), embedded entries, or a combination.
+    Manifest-managed entries are deliberately excluded — the standard
+    client update owns them, not these tabs."""
+    parts: list[str] = []
     if explicit_url:
-        return "catalog"
+        parts.append("catalog")
     if embedded:
-        return f"{embedded} embedded"
-    return "not configured"
+        parts.append(f"{embedded} embedded")
+    return " + ".join(parts) if parts else "not configured"
+
+
+def _manifest_executable_targets(config) -> list[str]:
+    """Manifest paths ending in executable types (.dll/.exe/.so/.dylib).
+
+    Display-only: these land in the game folder with the client's own
+    privileges — worth naming on the trust screen. Plain-language
+    suffixes, no logic change."""
+    block = getattr(config, "download_manifest", None)
+    if not isinstance(block, dict):
+        return []
+    routes = block.get("routes")
+    if not isinstance(routes, list):
+        return []
+    found: list[str] = []
+    for r in routes:
+        if not isinstance(r, dict):
+            continue
+        match = r.get("match")
+        if not isinstance(match, str):
+            continue
+        low = match.lower()
+        if (
+            low.endswith((".dll", ".exe", ".so", ".dylib"))
+            and match not in found
+        ):
+            found.append(match)
+    return found
 
 
 def trust_capabilities(config) -> list[tuple[str, bool, str]]:
-    """The four trust rows: (key, enabled, label) for client, mods,
-    addons and news. Network-free."""
+    """The five trust rows: (key, enabled, label) for client, mods,
+    addons, assets and news. Network-free — manifest counts come from
+    the config's declared routes, never a fetch."""
     has_client = bool(config.download_fallback_url or config.has_torrent())
     if config.download_fallback_url and config.has_torrent():
         client_detail = "BitTorrent + HTTPS archive"
@@ -115,7 +148,20 @@ def trust_capabilities(config) -> list[tuple[str, bool, str]]:
     else:
         client_detail = "not configured"
     addon_urls = [u for u in (config.addons_registry_urls or []) if u]
-    return [
+    # Server-managed entries don't count toward the community tabs —
+    # the standard client update owns them. The client row below still
+    # advertises the overlay itself.
+    has_manifest_client_files = bool(
+        getattr(config, "download_manifest", None)
+    )
+    if has_manifest_client_files and (
+        config.download_fallback_url or config.has_torrent()
+    ):
+        client_detail = f"{client_detail} + manifest overlay"
+    elif has_manifest_client_files:
+        has_client = True
+        client_detail = "manifest overlay only"
+    rows = [
         ("client", has_client, f"Client — {client_detail}"),
         (
             "mods",
@@ -133,8 +179,60 @@ def trust_capabilities(config) -> list[tuple[str, bool, str]]:
             + _catalog_summary(bool(addon_urls), len(config.embedded_addons)),
         ),
         (
+            "assets",
+            bool(config.assets_registry_url or config.embedded_assets),
+            "Assets — "
+            + _catalog_summary(
+                bool(config.assets_registry_url),
+                len(config.embedded_assets or []),
+            ),
+        ),
+        (
             "news",
             bool(config.news_url),
             f"News — {'feed configured' if config.news_url else 'no feed'}",
         ),
     ]
+    # Display-only high-risk rows: executable manifest targets, extra
+    # git hosts, fallback/torrent hosts. Plain-language warnings — no
+    # change to the trust model.
+    for target in _manifest_executable_targets(config):
+        rows.append(
+            (
+                "risk-executable",
+                True,
+                f"Runs code — manifest installs {target} "
+                "with the game's privileges",
+            )
+        )
+    extra_hosts = [
+        h for h in (getattr(config, "addon_git_hosts", None) or []) if h
+    ]
+    for h in sorted(set(extra_hosts)):
+        rows.append(
+            (
+                "risk-git-host",
+                True,
+                f"Extra addon host — {h} "
+                "(community-run, beyond the built-in git hosts)",
+            )
+        )
+    if config.download_fallback_url:
+        rows.append(
+            (
+                "risk-fallback",
+                True,
+                "Fallback host — the full client archive "
+                "downloads from here over HTTPS",
+            )
+        )
+    if config.has_torrent():
+        rows.append(
+            (
+                "risk-torrent",
+                True,
+                "Torrent source — the client downloads "
+                "peer-to-peer via BitTorrent",
+            )
+        )
+    return rows

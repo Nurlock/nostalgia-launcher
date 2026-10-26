@@ -82,8 +82,20 @@ class ScriptedWorker:
 
     def run(self, *args):
         self.run_args = args
+        self._replay()
+
+    def run_initial(self, *args):
+        """Stage entry point: initial acquisition."""
+        self.run_args = args
+        self._replay()
+
+    def run_incremental(self, *args):
+        """Stage entry point: incremental patch."""
+        self.run_args = args
+        self._replay()
+
+    def _replay(self):
         # Small delay to let the controller's synchronous initial
-        # StatusChanged/ProgressChanged post first, preserving order
         # (thread start races dispatcher post).
         time.sleep(0.02)
         for ev in type(self).script:
@@ -1153,6 +1165,7 @@ def test_terminate_game_kills_running_process(
     controller.state.game_pid = 1234
     controller.state.game_pgid = 9999
     killed = []
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
     monkeypatch.setattr(
         "nostalgia_launcher.services.umu.kill_game",
         lambda pid, pgid: killed.append((pid, pgid)),
@@ -1160,7 +1173,27 @@ def test_terminate_game_kills_running_process(
 
     assert controller.terminate_game() is True
 
-    assert killed == [(1234, 9999)]
+    wait_for_event.until_true(lambda: killed == [(1234, 9999)])
+    events = controller._dispatcher.drain()
+    assert any(
+        isinstance(e, LogMessage) and "Terminating game" in e.text
+        for e in events
+    )
+
+
+def test_terminate_game_kills_running_process_windows(
+    controller, worker_cls, controller_cfg, wait_for_event, monkeypatch
+):
+    controller.state.game_running = True
+    controller.state.game_pid = 1234
+    controller.state.game_pgid = 9999
+    proc = Mock()
+    controller._game_proc = proc
+    monkeypatch.setattr(uc, "is_linux", lambda: False)
+
+    assert controller.terminate_game() is True
+
+    wait_for_event.until_true(lambda: proc.terminate.called)
     events = controller._dispatcher.drain()
     assert any(
         isinstance(e, LogMessage) and "Terminating game" in e.text
@@ -1658,6 +1691,97 @@ def test_update_tab_enabled_respects_frozen_flag(
     (game / "WoW.exe").write_text("")
     controller_cfg["out_dir"] = str(game)
     assert controller.update_tab_enabled() is False
+
+
+def test_update_tab_stays_visible_with_manifest_overlay(
+    controller, controller_cfg, monkeypatch, tmp_path
+):
+    """A manifest overlay keeps the UPDATE tab visible on an existing
+    install even when the torrent side is frozen — the manifest is an
+    incremental backend with the same interface (verify → stale set →
+    HTTPS patch), so the tab still has something to offer."""
+    from nostalgia_launcher.core import launcher
+
+    monkeypatch.setattr(launcher, "torrent_update_allowed", lambda: False)
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    assert controller.update_tab_enabled() is False
+
+    cfg = launcher.config()
+    assert cfg is not None
+    monkeypatch.setattr(
+        cfg,
+        "download_manifest",
+        {"url": "https://srv.example/manifest.json"},
+        raising=False,
+    )
+    assert controller.update_tab_enabled() is True
+
+
+def test_manifest_stale_updatable_when_torrent_frozen(
+    controller, controller_cfg, monkeypatch
+):
+    """Magnet-only first-time-only + manifest overlay (this shape):
+    manifest-owned stale paths still offer UPDATE — the manifest is
+    the only incremental channel when the magnet cannot carry updates."""
+    from nostalgia_launcher.core.launcher import LauncherConfig
+
+    monkeypatch.setattr(
+        LauncherConfig, "torrent_update_allowed", lambda self: False
+    )
+    controller.state.torrent_stale = ["manifest:Data/patch-A.MPQ"]
+    readiness = controller.compute_readiness()
+    assert readiness.mode == "update"
+    assert "manifest" in readiness.status
+
+
+def test_torrent_stale_suppressed_when_torrent_frozen(
+    controller, controller_cfg, monkeypatch
+):
+    """Torrent-owned stale paths stay suppressed under a frozen flag —
+    only the manifest channel offers UPDATE there. The stale-list
+    BitTorrent path must not fire; readiness falls through to the
+    first-acquisition / unverified-client guards instead."""
+    from nostalgia_launcher.core.launcher import LauncherConfig
+
+    monkeypatch.setattr(
+        LauncherConfig, "torrent_update_allowed", lambda self: False
+    )
+    controller.state.torrent_stale = ["Data/patch-A.MPQ"]
+    controller.state.torrent_reachable = True
+    readiness = controller.compute_readiness()
+    assert "file(s) to update via BitTorrent" not in readiness.status
+
+
+def test_start_update_uses_incremental_path(
+    controller, worker_cls, controller_cfg, wait_for_event
+):
+    """start_update dispatches to run_incremental (never run_initial):
+    a stale set means a playable client exists — patch it."""
+    controller.state.torrent_stale = ["manifest:Data/patch-A.MPQ"]
+    controller.state.verify_out_dir = controller_cfg["out_dir"]
+    worker_cls.script = [UpdateCompleted()]
+    assert controller.start_update() is True
+    wait_for_event.drain_worker(controller, worker_cls.done)
+    assert len(worker_cls.instances) == 1
+    inst = worker_cls.instances[0]
+    assert inst.run_args == ({"manifest:Data/patch-A.MPQ"},)
+
+
+def test_start_client_download_uses_initial_path(
+    controller, worker_cls, controller_cfg, wait_for_event, monkeypatch
+):
+    """start_client_download dispatches to run_initial: full base
+    acquisition, no stale set involved."""
+    from nostalgia_launcher.services.update import workflow as wf
+
+    monkeypatch.setattr(wf, "torrent_recovery_available", lambda: True)
+    assert controller.start_client_download() is True
+    wait_for_event.drain_worker(controller, worker_cls.done)
+    assert len(worker_cls.instances) == 1
+    assert worker_cls.instances[0].run_args == ()
 
 
 def test_torrent_up_to_date_after_verify(

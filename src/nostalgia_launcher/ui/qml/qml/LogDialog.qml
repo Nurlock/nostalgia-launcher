@@ -3,6 +3,8 @@
 // `logModel` context property (ui/qml/settings.py:LogModel). Independent
 // modeless window (stays readable while interacting with the app).
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -11,17 +13,6 @@ import QtQuick.Layouts
 ApplicationWindow {
     id: root
     objectName: "qmlLogDialog"
-    title: "Session log"
-    visible: false
-    width: 720
-    height: 480
-    minimumWidth: 480
-    minimumHeight: 300
-    color: appTheme.colors["C_BG"]
-    Material.theme: appTheme.themed ? Material.Dark : Material.System
-    Material.accent: appTheme.colors["C_GOLD"]
-
-    onVisibleChanged: logDialogVisible(visible)
 
     signal logDialogVisible(bool open)
 
@@ -33,6 +24,18 @@ ApplicationWindow {
         requestActivate();
         raise();
     }
+
+    title: "Session log"
+    visible: false
+    width: 720
+    height: 480
+    minimumWidth: 480
+    minimumHeight: 300
+    color: appTheme.colors["C_BG"]
+    Material.theme: appTheme.themed ? Material.Dark : Material.System
+    Material.accent: appTheme.colors["C_GOLD"]
+
+    onVisibleChanged: logDialogVisible(visible)
 
     header: ToolBar {
         background: Rectangle {
@@ -74,7 +77,7 @@ ApplicationWindow {
             Button {
                 text: "Refresh"
                 flat: true
-                onClicked: logModel.refresh()
+                onClicked: if (logModel) logModel.refresh()
             }
             Button {
                 objectName: "qmlLogClose"
@@ -96,10 +99,12 @@ ApplicationWindow {
             id: logList
             objectName: "qmlLogList"
             width: parent.width
-            model: logModel.lines
+            model: logModel ? logModel.lines : []
             delegate: Label {
+                id: logLine
+                required property string modelData
                 width: ListView.view.width - 16
-                text: modelData
+                text: logLine.modelData
                 font.family: "monospace"
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT"]

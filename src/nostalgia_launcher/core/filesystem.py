@@ -8,6 +8,7 @@ import hashlib
 import os
 import shutil
 import stat
+import tempfile
 from pathlib import Path
 
 from .log_sink import log
@@ -21,17 +22,28 @@ def atomic_write_bytes(path: str, data: bytes):
     """Write via a temp file + atomic rename so a crash mid-write can never
     leave a truncated/corrupt file at `path`. Creates the parent directory
     so the per-user data dirs work on first write."""
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    tmp = path + ".tmp"
-    try:
-        with open(tmp, "wb") as f:
+    target_dir = os.path.dirname(path) or "."
+    os.makedirs(target_dir, exist_ok=True)
+    prefix = os.path.basename(path) + "."
+    with tempfile.NamedTemporaryFile(
+        mode="wb", dir=target_dir, prefix=prefix, suffix=".tmp", delete=False
+    ) as f:
+        tmp = f.name
+        try:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
+        except Exception:
+            f.close()
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            raise
+    try:
         os.replace(tmp, path)
-    finally:
+    except Exception:
         if os.path.exists(tmp):
             os.remove(tmp)
+        raise
 
 
 def atomic_write_text(path: str, text: str):
@@ -45,6 +57,14 @@ def sha1_file(path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest().upper()
+
+
+def sha256_file(path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest().lower()
 
 
 def cached_sha1(path_str: str, cache: dict) -> str:
@@ -161,9 +181,9 @@ def pick_game_executable(
     Returns ``(absolute_path, label)`` with the on-disk spelling as label.
     """
     for name in external_executables or []:
-        candidate = os.path.join(client_dir, name)
-        if os.path.exists(candidate):
-            return candidate, name
+        found = _find_case_insensitive(client_dir, name)
+        if found is not None:
+            return found, os.path.basename(found)
     wanted = exe_name or _configured_exe()
     found = _find_case_insensitive(client_dir, wanted)
     if found:

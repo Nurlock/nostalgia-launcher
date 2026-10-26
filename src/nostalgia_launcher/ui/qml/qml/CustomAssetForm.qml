@@ -3,12 +3,16 @@
 // (ui/qml/custom.py:CustomAssetModel); emits accepted/rejected instead
 // of closing anything itself.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 ColumnLayout {
+    id: root
+
     signal accepted()
     signal rejected()
 
@@ -30,10 +34,6 @@ ColumnLayout {
             Field { caption: "VERSION TAG (optional)"; onEdit: (t) => customAssetModel.setField("version", t) }
             Field { caption: "REPO URL (optional https link)"; onEdit: (t) => customAssetModel.setField("repoUrl", t) }
             CheckBox {
-                text: "Essential (auto-install)"
-                onToggled: customAssetModel.setFlag("essential", checked)
-            }
-            CheckBox {
                 text: "Probe the remote file for updates (drift detection)"
                 onToggled: customAssetModel.setFlag("probe", checked)
             }
@@ -46,8 +46,8 @@ ColumnLayout {
             Label {
                 objectName: "qmlCustomAssetError"
                 Layout.fillWidth: true
-                visible: customAssetModel.errorText !== ""
-                text: customAssetModel.errorText
+                visible: customAssetModel ? customAssetModel.errorText !== "" : false
+                text: customAssetModel ? customAssetModel.errorText : ""
                 color: appTheme.colors["C_ERR"]
                 wrapMode: Text.WordWrap
             }
@@ -59,23 +59,24 @@ ColumnLayout {
         Button {
             text: "Cancel"
             flat: true
-            onClicked: rejected()
+            onClicked: root.rejected()
         }
         Button {
             objectName: "qmlCustomAssetSubmit"
             text: "Add asset"
             highlighted: true
             onClicked: {
-                if (customAssetModel.submit())
-                    accepted();
+                if (customAssetModel && customAssetModel.submit())
+                    root.accepted();
             }
         }
     }
 
     component Field: ColumnLayout {
-        signal edit(string text)
         property alias caption: cap.text
         property string hint: ""
+        signal edit(string text)
+
         Layout.fillWidth: true
         spacing: 2
         Label {

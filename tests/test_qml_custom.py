@@ -20,7 +20,6 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
-from nostalgia_launcher.ui.qml.addons import AddonsModel
 from nostalgia_launcher.ui.qml.app import qml_dir
 from nostalgia_launcher.ui.qml.content import ContentListModel
 from nostalgia_launcher.ui.qml.custom import (
@@ -39,7 +38,7 @@ from nostalgia_launcher.ui.qml.viewmodels import (
     LauncherState,
     NewsFeedModel,
     ThemeBridge,
-    UpdateState,
+    UpdateViewState,
 )
 from nostalgia_launcher.ui.qml.wizard import WizardModel
 from nostalgia_launcher.ui.theme import Palette
@@ -60,14 +59,16 @@ def engine(qapp):
     eng.rootContext().setContextProperty("launcherState", LauncherState())
     eng.rootContext().setContextProperty("appTheme", ThemeBridge(Palette()))
     eng.rootContext().setContextProperty("newsModel", NewsFeedModel())
-    eng.rootContext().setContextProperty("updateState", UpdateState())
+    eng.rootContext().setContextProperty("updateState", UpdateViewState())
     eng.rootContext().setContextProperty(
         "modsModel", ContentListModel("mods empty")
     )
     eng.rootContext().setContextProperty(
         "assetsModel", ContentListModel("assets empty")
     )
-    eng.rootContext().setContextProperty("addonsModel", AddonsModel())
+    eng.rootContext().setContextProperty(
+        "addonsModel", ContentListModel("addons empty")
+    )
     eng.rootContext().setContextProperty("settingsModel", SettingsModel())
     eng.rootContext().setContextProperty("logModel", LogModel())
     eng.rootContext().setContextProperty("wizard", WizardModel())
@@ -129,7 +130,6 @@ def test_mod_lists_come_from_catalog(qapp):
     model = CustomModModel()
     assert "github_release" in model.property("sourceKinds")
     assert model.property("modTypes") != []
-    assert model.property("installations") != []
 
 
 # ── custom addon ──────────────────────────────────────────────────────
@@ -181,10 +181,8 @@ def test_asset_accepts_entry(qapp):
     model.setField("assetId", "a")
     model.setField("url", "https://example.test/patch.mpq")
     model.setField("dest", "Data/patch.mpq")
-    model.setFlag("essential", True)
     assert model.submit() is True
     assert entries[0]["dest"] == "Data/patch.mpq"
-    assert entries[0]["essential"] is True
 
 
 # ── linux ─────────────────────────────────────────────────────────────
@@ -246,7 +244,7 @@ def test_linux_snapshot_and_actions(qapp):
 
 def test_realm_prompt_flow(qapp):
     answers = []
-    state = UpdateState()
+    state = UpdateViewState()
     state.set_realm_handler(answers.append)
     assert state.property("realmPrompt") == ""
     state.prompt_realm("OldRealm", "NewRealm")

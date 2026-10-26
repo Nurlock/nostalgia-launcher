@@ -104,7 +104,7 @@ def test_apply_confirmed_out_dir_empty_is_a_noop(tmp_path):
 
 def test_atomic_write_leaves_no_tmp_behind(tmp_path):
     config_store.save_config({"a": 1})
-    assert not (tmp_path / "config.json.tmp").exists()
+    assert not list(tmp_path.glob("*.tmp"))
     assert (tmp_path / "config.json").exists()
 
 

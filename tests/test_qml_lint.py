@@ -7,6 +7,7 @@ locations, first hit wins: `PATH`, then the distro Qt path
 """
 
 import os
+import re
 import shutil
 import subprocess
 
@@ -75,17 +76,26 @@ def _qmllint():
 
 QMLLINT = _qmllint()
 
-# Warning classes that are by design or environment-specific — never
-# failures (see AGENTS.md "QML lint"):
-_IGNORED = (
-    "[unqualified]",  # engine root-context globals (appTheme, *Model)
-    "OpenDirectory",  # undefined on the offscreen backend, guarded at runtime
-    "Did you mean",  # qmllint follow-up hint for the line above
-)
-
-# Actionable classes: layout misuse is real undefined behavior; any other
-# error outside the ignore list fails the file.
-_FAIL_MARKERS = ("layout-positioning", "Error")
+# Known root-context globals set on QQmlEngine in python (ui/qml/app.py)
+_CONTEXT_PROPERTIES = {
+    "appTheme",
+    "settingsModel",
+    "wizard",
+    "linuxModel",
+    "updateState",
+    "customModModel",
+    "launcherState",
+    "newsModel",
+    "customAssetModel",
+    "customAddonModel",
+    "logModel",
+    "addonsModel",
+    "modsModel",
+    "assetsModel",
+    "browseModsModel",
+    "browseAssetsModel",
+    "browseAddonsModel",
+}
 
 
 def _qml_files():
@@ -118,21 +128,37 @@ def test_qmllint_available():
 @pytest.mark.skipif(QMLLINT is None, reason="no qmllint binary")
 @pytest.mark.parametrize("name", _qml_files())
 def test_qml_file_lints_clean(name):
-    out = _lint(os.path.join(QML_DIR, name))
+    file_path = os.path.join(QML_DIR, name)
+    out = _lint(file_path)
     if any(mark in out for mark in _BASE_IMPORT_MARKERS):
         pytest.skip(
             f"qmllint cannot resolve QtQuick base modules here "
             f"({_qmllint()}); environment issue, not a QML bug"
         )
+    with open(file_path, encoding="utf-8") as fp:
+        source_lines = fp.readlines()
+
     problems = []
     for line in out.splitlines():
-        if any(ign in line for ign in _IGNORED):
-            continue
-        if any(mark in line for mark in _FAIL_MARKERS) or (
-            line.strip().startswith("Warning:") and "[unqualified]" not in line
+        trimmed = line.strip()
+        if not trimmed.startswith("Warning:") and not trimmed.startswith(
+            "Error:"
         ):
-            # Re-check: only keep warnings that are NOT unqualified (the
-            # dominant benign class); anything else deserves attention.
-            problems.append(line)
-    # Collapse: unqualified lines already filtered; report the rest.
+            continue
+        if "[unqualified]" in line:
+            # Only allow unqualified access if the target token is a registered
+            # engine root-context property. Delegate/local identifiers must be
+            # qualified.
+            match = re.search(r":(\d+):(\d+):", line)
+            if match:
+                l_num = int(match.group(1)) - 1
+                c_num = int(match.group(2)) - 1
+                if l_num < len(source_lines):
+                    ident_m = re.match(
+                        r"[a-zA-Z_0-9]+", source_lines[l_num][c_num:]
+                    )
+                    ident = ident_m.group(0) if ident_m else ""
+                    if ident in _CONTEXT_PROPERTIES:
+                        continue
+        problems.append(line)
     assert not problems, "\n".join(problems)

@@ -22,7 +22,6 @@ class BrowseModel(QAbstractListModel):
     changed = Signal()
     chromeChanged = Signal()
     selectionChanged = Signal()
-    chromeChanged = Signal()
 
     def __init__(self, empty_text="Nothing available.", parent=None):
         super().__init__(parent)
@@ -30,7 +29,6 @@ class BrowseModel(QAbstractListModel):
         self._visible: list = []
         self._selected: set = set()
         self._queue: list = []
-        self._visible: list = []
         self._filter_text = ""
         self._busy = False
         self._empty_text = empty_text
@@ -90,7 +88,7 @@ class BrowseModel(QAbstractListModel):
         ]
 
     @Slot(str)
-    def setFilterText(self, text: str):
+    def setFilterText(self, text: str) -> None:
         if text != self._filter_text:
             self._filter_text = text
             self.beginResetModel()
@@ -105,11 +103,11 @@ class BrowseModel(QAbstractListModel):
         self._on_install = callback
 
     @Slot(str)
-    def install(self, eid: str):
+    def install(self, eid: str) -> None:
         if self._on_install is not None and self._on_install(eid):
             self.set_running(True)
 
-    def set_running(self, running: bool):
+    def set_running(self, running: bool) -> None:
         running = bool(running)
         if not running and self._queue:
             # An install just settled with more queued: chain the next
@@ -121,7 +119,7 @@ class BrowseModel(QAbstractListModel):
             self.chromeChanged.emit()
 
     @Slot(str, bool)
-    def setSelected(self, eid: str, checked: bool):
+    def setSelected(self, eid: str, checked: bool) -> None:
         """Model-side echo guard: a programmatic refresh re-firing the
         checkbox is dropped when nothing changed."""
         checked = bool(checked)
@@ -143,7 +141,7 @@ class BrowseModel(QAbstractListModel):
     selectedCount = Property(int, _get_selected_count, notify=selectionChanged)
 
     @Slot()
-    def installSelected(self):
+    def installSelected(self) -> None:
         """Install every selected entry in turn, chained on settle."""
         wanted = set(self._selected)
         ids = [e.get("id") for e in self._visible if e.get("id") in wanted]
@@ -190,7 +188,6 @@ class BrowseModel(QAbstractListModel):
         return self._empty_text
 
     emptyText = Property(str, _get_empty_text, constant=True)
-    emptyText = Property(str, _get_empty_text, constant=True)
 
 
 def content_browse_entries(entries, state) -> list:
@@ -214,13 +211,75 @@ def addon_browse_entries(state) -> list:
     gits by the controller, so it passes through untouched.
     """
     return list(getattr(state, "available", []) or [])
-    return list(getattr(state, "available", []) or [])
+
+
+def addon_tab_entries(state) -> list:
+    """Installed addons as registry-like dicts for the shared manage tab.
+
+    Maps ``state.addons`` (folder → AddonState) to ``{id, name,
+    description, repo_url}`` dicts the shared ``build_rows`` consumes.
+    Titles/descriptions strip WoW color escapes (Browse mapping parity);
+    repo URL drops a trailing ``.git`` for display. Installed-only by
+    construction: only ``state.addons`` keys appear."""
+    from ...core.helpers import strip_wow_colors
+
+    entries = []
+    for folder, rec in (getattr(state, "addons", {}) or {}).items():
+        toc = getattr(rec, "toc", None) or {}
+        title = (
+            strip_wow_colors(
+                getattr(rec, "name", None)
+                or toc.get("Title")
+                or (toc.get(folder) or {}).get("Title")
+                or ""
+            )
+            or folder
+        )
+        notes = strip_wow_colors(
+            getattr(rec, "description", None)
+            or toc.get("Notes")
+            or (toc.get(folder) or {}).get("Notes")
+            or ""
+        )
+        git = getattr(rec, "git", None) or ""
+        if git.endswith(".git"):
+            git = git[: -len(".git")]
+        entries.append(
+            {
+                "id": folder,
+                "name": title,
+                "description": notes,
+                "repo_url": git,
+            }
+        )
+    return entries
+
+
+def addon_tab_rows(state) -> list:
+    """Manage-tab entries for ADDONS: installed folders plus rows
+    staged for uninstall (pending.enabled is False)."""
+    present = set(getattr(state, "addons", {}) or {})
+    staged = {
+        folder
+        for folder, pend in (getattr(state, "pending", {}) or {}).items()
+        if getattr(pend, "enabled", pend) is False
+    }
+    return [e for e in addon_tab_entries(state) if e["id"] in present | staged]
 
 
 def tab_rows(entries, state) -> list:
-    """Registry entries the manage-tab may show: anything with a record
-    (installed, failed, or staged) — never pure catalog entries."""
+    """Registry entries the manage-tab may show: installed entries
+    (present on disk, or staged for uninstall) — never pure catalog
+    entries. Installs happen in the Browse dialog; this tab only
+    lists what can be uninstalled."""
     recs = getattr(state, "records", {}) or {}
     pending = getattr(state, "pending", {}) or {}
-    known = set(recs) | set(pending)
+    staged = set()
+    for eid, pend in pending.items():
+        enabled = getattr(pend, "enabled", pend)
+        if enabled is False:
+            staged.add(eid)
+    known = {
+        eid for eid, rec in recs.items() if getattr(rec, "present", False)
+    } | staged
     return [e for e in entries or [] if e["id"] in known]

@@ -47,12 +47,9 @@ MOD_SOURCE_KINDS = set(_source_kinds())
 MOD_POST_INSTALL_HOOKS = set(_hooks.names())
 
 # Mod discriminators. ``type`` says what a mod provides (a DLL drop-in vs
-# the game executable itself); ``installation`` replaces the legacy
-# ``essential`` boolean ("required" mods auto-install by default — an
-# explicit user opt-out is always respected). A catalog entry carrying the
-# legacy ``essential: true`` is translated to ``installation: "required"``.
+# the game executable itself). Every mod is user opt-in — there is no
+# auto-install policy; the user enables what they want in the MODS panel.
 MOD_TYPES = ("mod", "external-launcher")
-MOD_INSTALLATIONS = ("required", "user_opt_in")
 
 # Catalogs auto-refresh at most once a week: startup and panel loads serve
 # the persisted cache instantly, and only a cache older than this TTL (or an
@@ -300,14 +297,30 @@ def _download_url(
 
 
 def validate_addon(entry: dict) -> dict | None:
-    """Sanitize one addon catalog entry; None when unusable."""
+    """Sanitize one addon catalog entry; None when unusable.
+
+    Identity is ``id`` (stable slug, dedupe/depends key); ``folder`` is
+    the explicit install slot (``Interface/AddOns/<folder>``). ``name``
+    is a display label only (falls back to ``folder``). Legacy
+    folder-only entries (no ``id``) are kept working: ``id`` falls
+    back to the folder slug so old catalogs and custom rows still
+    validate."""
     if not isinstance(entry, dict):
         return None
     from ..core.safety import safe_folder
 
-    name = _text(entry.get("name") or entry.get("folder"))
-    if not safe_folder(name):
+    folder = _text(entry.get("folder") or entry.get("name"))
+    if not safe_folder(folder):
         return None
+    raw_id = _text(entry.get("id"))
+    if entry.get("id") is not None and not safe_folder(raw_id):
+        # An explicit id that is not a safe slug poisons identity and
+        # depends resolution — fail closed rather than falling back.
+        return None
+    aid = raw_id or folder
+    if not safe_folder(aid):
+        return None
+    name = _text(entry.get("name")) or folder
     git = entry.get("git")
     git = git.strip() if isinstance(git, str) and git.strip() else None
     description = entry.get("description")
@@ -338,7 +351,9 @@ def validate_addon(entry: dict) -> dict | None:
         # drop it fail-closed like any other unusable entry.
         return None
     return {
+        "id": aid,
         "name": name,
+        "folder": folder,
         "git": git,
         "source_type": source_type,
         "download_url": download_url,
@@ -353,19 +368,25 @@ def validate_addon(entry: dict) -> dict | None:
 
 
 def merge_addons(remote: list, custom: list) -> list:
-    """Custom addon entries override remote ones by folder name; new folders
-    are appended. ``recommended`` / ``blocked`` flags OR together so a custom
-    file can only add them."""
-    by_folder = {a.get("name"): a for a in remote}
+    """Custom addon entries override remote ones by id; new ids are
+    appended. Sharing one ``folder`` declares a variant group (same
+    install slot, install = replace) — both rows are kept. ``name`` is
+    display-only and never a key. ``recommended`` / ``blocked`` flags
+    OR together so a custom file can only add them."""
+    by_id = {}
+    for a in remote:
+        eid = a.get("id") or a.get("folder") or a.get("name")
+        if eid:
+            by_id[eid] = a
     for entry in custom:
-        folder = entry.get("name")
-        if not folder:
+        eid = entry.get("id") or entry.get("folder") or entry.get("name")
+        if not eid:
             continue
-        base = by_folder.get(folder)
+        base = by_id.get(eid)
         if base is None:
-            by_folder[folder] = dict(entry)
+            by_id[eid] = dict(entry)
             continue
-        for key in ("git", "branch", "ref", "description"):
+        for key in ("git", "branch", "ref", "description", "folder", "name"):
             if entry.get(key) is not None:
                 base[key] = entry[key]
         for key in ("source_type", "download_url"):
@@ -377,7 +398,7 @@ def merge_addons(remote: list, custom: list) -> list:
             "recommended", False
         )
         base["blocked"] = base.get("blocked") or entry.get("blocked", False)
-    return list(by_folder.values())
+    return list(by_id.values())
 
 
 # ── mod entries ──────────────────────────────────────────────────────────────
@@ -411,7 +432,6 @@ def validate_mod(entry: dict) -> dict | None:
         "name": name,
         # Explicit null behaves like absence (the documented "default mod").
         "type": entry.get("type") or "mod",
-        "installation": _mod_installation(entry),
         "description": (
             entry.get("description")
             if isinstance(entry.get("description"), str)
@@ -421,8 +441,6 @@ def validate_mod(entry: dict) -> dict | None:
         "source": {},
     }
     if mod["type"] not in MOD_TYPES:
-        return None
-    if mod["installation"] not in MOD_INSTALLATIONS:
         return None
     hooks = source.get("post_install") or []
     if hooks:
@@ -484,23 +502,14 @@ def validate_mod(entry: dict) -> dict | None:
     return mod
 
 
-def _mod_installation(entry: dict) -> str:
-    """The effective installation policy: the ``installation`` field when
-    it is a string, else the "user_opt_in" default."""
-    installation = entry.get("installation")
-    if isinstance(installation, str):
-        return installation.lower()
-    return "user_opt_in"
-
-
 # Fields a kind's custom layer may override on an existing (remote/server)
-# entry; absent or null values leave the base copy untouched.
+# entry; absent or null values leave the base copy untouched. No install
+# policy lives here — every entry is user opt-in.
 MOD_MERGE_FIELDS = (
     "name",
     "description",
     "repo_url",
     "type",
-    "installation",
     "source",
     "register_dll",
     "installed_files",
@@ -512,7 +521,6 @@ ASSET_MERGE_FIELDS = (
     "name",
     "description",
     "repo_url",
-    "essential",
     "url",
     "dest",
     "version",
@@ -538,6 +546,47 @@ def merge_by_key(remote: list, custom: list, fields) -> list:
             if entry.get(key) is not None:
                 base[key] = entry[key]
     return list(by_id.values())
+
+
+def dedupe_assets_by_dest(entries: list, *, server_wins: bool = True) -> list:
+    """Drop shadow rows: same ``dest`` listed under two ids.
+
+    Community catalogs can list the same client-relative ``dest``
+    under two ids (e.g. an embedded entry and a catalog entry for the
+    same ``Data/patch-A.MPQ``). Only one row can own the file — with
+    ``server_wins`` (default) a ``manifest-`` claimant beats community
+    rows; otherwise first-come order wins. Comparison is
+    case-insensitive on the normalized dest; order is preserved.
+    """
+    seen: dict[str, dict] = {}
+    claimed: set[str] = set()
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        dest = entry.get("dest")
+        norm = (
+            dest.replace("\\", "/").strip().lower()
+            if isinstance(dest, str) and dest.strip()
+            else ""
+        )
+        eid = entry.get("id", "")
+        managed = isinstance(eid, str) and eid.startswith("manifest-")
+        if norm and norm in claimed:
+            continue
+        if norm and server_wins and managed:
+            for drop_id in [i for i, e in seen.items() if _dest_of(e) == norm]:
+                del seen[drop_id]
+            claimed.add(norm)
+        if eid and eid not in seen:
+            seen[eid] = entry
+    return list(seen.values())
+
+
+def _dest_of(entry: dict) -> str:
+    dest = entry.get("dest")
+    if not isinstance(dest, str) or not dest.strip():
+        return ""
+    return dest.replace("\\", "/").strip().lower()
 
 
 # ── asset entries ────────────────────────────────────────────────────────────
@@ -587,7 +636,6 @@ def validate_asset(entry: dict) -> dict | None:
     return {
         "id": aid,
         "name": name,
-        "essential": bool(entry.get("essential", False)),
         "description": description,
         "repo_url": repo_url,
         "url": url.strip(),
@@ -716,16 +764,19 @@ def layered_registry(
     embedded_entries: list,
     *,
     remote: list | None,
+    bundled: list | None = None,
 ) -> list:
     """The effective registry for a content kind, in override order (later
-    wins by id): the remote/cached catalog < the local repo's server-imported
-    entries < the launcher config's embedded entries < the repo's user-custom
-    entries. Empty when nothing is configured."""
+    wins by id): the remote/cached catalog < manifest-bundled entries <
+    the local repo's server-imported entries < the launcher config's
+    embedded entries < the repo's user-custom entries. Empty when
+    nothing is configured."""
     base = [] if remote is None else remote
     repo = read_local_repo(kind)
     label = f"local {kind} repo"
     merged = base
     for layer in (
+        [] if bundled is None else bundled,
         validate_entries(repo["server"], validator, label),
         embedded_entries,
         validate_entries(repo["custom"], validator, label),

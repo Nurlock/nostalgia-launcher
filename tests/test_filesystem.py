@@ -227,3 +227,17 @@ def test_external_launcher_still_wins_over_renamed(tmp_path):
         exe_name="ExampleClient.exe",
     )
     assert label == "ExampleLoader.exe"
+
+
+def test_atomic_write_bytes_creates_file_and_leaves_no_tmp(tmp_path):
+    target = tmp_path / "subdir" / "data.bin"
+    filesystem.atomic_write_bytes(str(target), b"hello world")
+    assert target.read_bytes() == b"hello world"
+    assert not list(target.parent.glob("*.tmp"))
+
+
+def test_atomic_write_text_creates_file_and_leaves_no_tmp(tmp_path):
+    target = tmp_path / "text.txt"
+    filesystem.atomic_write_text(str(target), "hello utf8: 🚀")
+    assert target.read_text(encoding="utf-8") == "hello utf8: 🚀"
+    assert not list(tmp_path.glob("*.tmp"))

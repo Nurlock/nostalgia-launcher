@@ -108,14 +108,22 @@ def fetch_mods_catalog(force=False) -> list | None:
 
 
 def mods_registry(force=False) -> list:
-    """The effective mod registry — see ``catalog.layered_registry`` for
-    the layer order. Empty when nothing is configured."""
+    """The effective mod registry: community entries plus server-managed
+    (manifest-bundled ``manifest-``) entries as read-only reference rows.
+
+    Server rows render with a badge and locked controls — the standard
+    client update (verify → stale set → stage download) is the only
+    writer. See ``catalog.layered_registry`` for the layer order.
+    Empty when nothing is configured."""
+    from . import manifest as _manifest
+
     return catalog.layered_registry(
         "mods",
         catalog.validate_mod,
         catalog.MOD_MERGE_FIELDS,
         embedded_mods(),
         remote=fetch_mods_catalog(force=force),
+        bundled=_manifest.bundled_mods(),
     )
 
 
@@ -290,47 +298,22 @@ def registered_dlls(mod: dict) -> list:
 
 
 def scan_unknown_mods(client_dir: str, registry: list) -> list:
-    """dlls.txt entries no catalog mod claims (by register_dll, case-
-    insensitive) — mods the client loads that the launcher doesn't track."""
+    """dlls.txt entries no known mod claims (by register_dll, case-
+    insensitive) — mods the client loads that the launcher doesn't
+    track. Bundled/server-managed entries claim their DLLs too, so a
+    server DLL is never proposed for removal."""
     known = {
         d.strip().lower() for mod in registry for d in registered_dlls(mod)
     }
+    try:
+        from . import manifest as _manifest
+
+        for mod in _manifest.bundled_mods():
+            for d in registered_dlls(mod):
+                known.add(d.strip().lower())
+    except Exception:
+        pass
     return sorted(n for n in read_dlls_entries(client_dir) if n not in known)
-
-
-def remove_unknown_mod(client_dir: str, name: str):
-    """Uninstall an untracked mod straight from the filesystem: drop its
-    dlls.txt line and delete the matching file when one exists."""
-    name = name.strip()
-    if not name:
-        return
-    path = _dlls_txt_path(client_dir)
-    if os.path.exists(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                content = f.read()
-        except (OSError, UnicodeDecodeError):
-            return
-        lines = [
-            line
-            for line in content.splitlines()
-            if line.strip().lower() != name.lower()
-        ]
-        try:
-            if lines:
-                _atomic_write(path, "\n".join(lines) + "\n")
-            else:
-                os.remove(path)
-        except OSError as e:
-            log(f"  Could not update dlls.txt: {e}", "err")
-            return
-    # dlls.txt is mod-written, so its entries are untrusted: never resolve
-    # one to a path outside client_dir.
-    if safe_relpath(name):
-        full = os.path.join(client_dir, name)
-        if os.path.exists(full):
-            os.remove(full)
-            log(f"  Removed {name}")
 
 
 def add_dll(client_dir: str, name: str):
@@ -421,10 +404,9 @@ def external_launcher_executables(client_dir: str) -> list:
     registry order (first = highest precedence).
 
     Active means: ``type == "external-launcher"`` with a non-empty
-    ``executable``, the installation policy satisfied ("required" mods are
-    always active; "user_opt_in" only when their per-user record is enabled),
-    AND the executable exists on disk. Anything else is excluded so launch
-    falls back to WoW.exe — no implicit loader preference.
+    ``executable``, the per-user record enabled, AND the executable
+    exists on disk. Anything else is excluded so launch falls back to
+    WoW.exe — no implicit loader preference.
     """
     out = []
     records = load_config().get("mods", {})
@@ -434,9 +416,7 @@ def external_launcher_executables(client_dir: str) -> list:
         exe = mod.get("executable")
         if not exe:
             continue
-        if mod.get("installation") != "required" and not records.get(
-            mod["id"], {}
-        ).get("enabled", False):
+        if not records.get(mod["id"], {}).get("enabled", False):
             continue
         if os.path.exists(os.path.join(client_dir, exe)):
             out.append(exe)

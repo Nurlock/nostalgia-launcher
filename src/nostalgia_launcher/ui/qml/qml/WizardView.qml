@@ -4,6 +4,8 @@
 // (ui/qml/wizard.py:WizardModel). Used standalone at first launch
 // (WizardWindow.qml) and embedded for profile import.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -31,7 +33,7 @@ Dialog {
                 Label {
                     objectName: "qmlWizardTitle"
                     Layout.fillWidth: true
-                    text: wizard.title
+                    text: wizard ? wizard.title : ""
                     font.bold: true
                     font.pointSize: 13
                     color: appTheme.colors["C_GOLD_LT"]
@@ -49,7 +51,7 @@ Dialog {
             Label {
                 objectName: "qmlWizardStep"
                 Layout.fillWidth: true
-                text: wizard.step
+                text: wizard ? wizard.step : ""
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT_DIM"]
             }
@@ -63,7 +65,7 @@ Dialog {
         Label {
             objectName: "qmlWizardIntro"
             Layout.fillWidth: true
-            visible: wizard.stage === "input"
+            visible: wizard ? wizard.stage === "input" : false
             text: "This launcher doesn't include any server list.\n\nTo continue, import a configuration supplied independently by your community or server operator. The configuration controls where the launcher retrieves game files, news, mods, and addons from."
             font.pointSize: 10
             color: appTheme.colors["C_TEXT_DIM"]
@@ -73,8 +75,8 @@ Dialog {
         Label {
             objectName: "qmlWizardStatus"
             Layout.fillWidth: true
-            visible: wizard.statusText !== ""
-            text: wizard.statusText
+            visible: wizard ? wizard.statusText !== "" : false
+            text: wizard ? wizard.statusText : ""
             font.pointSize: 9
             color: appTheme.colors["C_TEXT_DIM"]
             wrapMode: Text.WordWrap
@@ -83,38 +85,38 @@ Dialog {
         // ── input stage ─────────────────────────────────────
         ColumnLayout {
             Layout.fillWidth: true
-            visible: wizard.stage === "input"
+            visible: wizard ? wizard.stage === "input" : false
             spacing: 4
             RadioButton {
                 objectName: "qmlWizardSourceUrl"
                 text: "A configuration URL"
-                checked: wizard.source === "url"
-                onClicked: wizard.setSource("url")
+                checked: wizard ? wizard.source === "url" : false
+                onClicked: if (wizard) wizard.setSource("url")
             }
             RadioButton {
                 objectName: "qmlWizardSourceFile"
                 text: "A configuration file"
-                checked: wizard.source === "file"
-                onClicked: wizard.setSource("file")
+                checked: wizard ? wizard.source === "file" : false
+                onClicked: if (wizard) wizard.setSource("file")
             }
             TextField {
                 Accessible.name: "Configuration URL"
                 objectName: "qmlWizardUrl"
                 Layout.fillWidth: true
-                visible: wizard.source === "url"
-                text: wizard.url
+                visible: wizard ? wizard.source === "url" : false
+                text: wizard ? wizard.url : ""
                 placeholderText: "Configuration URL (https://example.com/community-config.json)"
                 font.family: "monospace"
-                onTextChanged: wizard.setUrl(text)
+                onTextChanged: if (wizard) wizard.setUrl(text)
             }
             RowLayout {
                 Layout.fillWidth: true
-                visible: wizard.source === "file"
+                visible: wizard ? wizard.source === "file" : false
                 TextField {
                     Accessible.name: "Configuration file"
                     objectName: "qmlWizardPath"
                     Layout.fillWidth: true
-                    text: wizard.configPath
+                    text: wizard ? wizard.configPath : ""
                     readOnly: true
                     placeholderText: "Select a local configuration file"
                     font.family: "monospace"
@@ -130,7 +132,7 @@ Dialog {
         // ── folder stage ────────────────────────────────────
         ColumnLayout {
             Layout.fillWidth: true
-            visible: wizard.stage !== "input"
+            visible: wizard ? wizard.stage !== "input" : false
             spacing: 4
             Label {
                 text: "INSTALL FOLDER"
@@ -151,15 +153,15 @@ Dialog {
                     Accessible.name: "INSTALL FOLDER"
                     objectName: "qmlWizardFolder"
                     Layout.fillWidth: true
-                    text: wizard.folder
-                    enabled: wizard.stage === "folder"
+                    text: wizard ? wizard.folder : ""
+                    enabled: wizard ? wizard.stage === "folder" : false
                     font.family: "monospace"
-                    onTextChanged: wizard.setFolder(text)
+                    onTextChanged: if (wizard) wizard.setFolder(text)
                 }
                 Button {
                     objectName: "qmlWizardFolderBrowse"
                     text: "Browse…"
-                    enabled: wizard.stage === "folder"
+                    enabled: wizard ? wizard.stage === "folder" : false
                     onClicked: folderPicker.open()
                 }
             }
@@ -170,7 +172,7 @@ Dialog {
             objectName: "qmlWizardTrust"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: wizard.stage === "trust"
+            visible: wizard ? wizard.stage === "trust" : false
             clip: true
             contentWidth: availableWidth
             ColumnLayout {
@@ -179,7 +181,7 @@ Dialog {
                 Label {
                     objectName: "qmlWizardTrustName"
                     Layout.fillWidth: true
-                    text: wizard.trustName
+                    text: wizard ? wizard.trustName : ""
                     font.bold: true
                     font.pointSize: 13
                     color: appTheme.colors["C_TEXT"]
@@ -188,7 +190,7 @@ Dialog {
                 Label {
                     objectName: "qmlWizardTrustSource"
                     Layout.fillWidth: true
-                    text: wizard.trustSource
+                    text: wizard ? wizard.trustSource : ""
                     color: appTheme.colors["C_TEXT_DIM"]
                     wrapMode: Text.WordWrap
                 }
@@ -206,7 +208,7 @@ Dialog {
                 Label {
                     objectName: "qmlWizardTrustHosts"
                     Layout.fillWidth: true
-                    text: wizard.trustHosts.join("\n")
+                    text: wizard && wizard.trustHosts ? wizard.trustHosts.join("\n") : ""
                     font.family: "monospace"
                     color: appTheme.colors["C_TEXT"]
                     wrapMode: Text.WordWrap
@@ -223,11 +225,13 @@ Dialog {
                     color: appTheme.colors["C_GOLD"]
                 }
                 Repeater {
-                    model: wizard.trustCaps
+                    model: wizard ? wizard.trustCaps : []
                     Label {
+                        id: trustCapLabel
+                        required property var modelData
                         Layout.fillWidth: true
-                        text: (modelData.enabled ? "✓ " : "— ") + modelData.detail
-                        color: modelData.enabled ? appTheme.colors["C_TEXT"] : appTheme.colors["C_TEXT_DIM"]
+                        text: (trustCapLabel.modelData.enabled ? "✓ " : "— ") + trustCapLabel.modelData.detail
+                        color: trustCapLabel.modelData.enabled ? appTheme.colors["C_TEXT"] : appTheme.colors["C_TEXT_DIM"]
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -248,8 +252,8 @@ Dialog {
         Label {
             objectName: "qmlWizardError"
             Layout.fillWidth: true
-            visible: wizard.errorText !== ""
-            text: wizard.errorText
+            visible: wizard ? wizard.errorText !== "" : false
+            text: wizard ? wizard.errorText : ""
             color: appTheme.colors["C_ERR"]
             wrapMode: Text.WordWrap
         }
@@ -262,9 +266,9 @@ Dialog {
             Button {
                 objectName: "qmlWizardBack"
                 text: "Back"
-                visible: wizard.backVisible
+                visible: wizard ? wizard.backVisible : false
                 flat: true
-                onClicked: wizard.goBack()
+                onClicked: if (wizard) wizard.goBack()
             }
             Button {
                 objectName: "qmlWizardCancel"
@@ -274,11 +278,11 @@ Dialog {
             }
             Button {
                 objectName: "qmlWizardOk"
-                text: wizard.okText
+                text: wizard ? wizard.okText : "Continue"
                 highlighted: true
-                enabled: wizard.okEnabled
+                enabled: wizard ? wizard.okEnabled : false
                 onClicked: {
-                    if (wizard.submit())
+                    if (wizard && wizard.submit())
                         root.accept();
                 }
             }
@@ -293,17 +297,9 @@ Dialog {
         onAccepted: wizard.setPath(currentFile.toString().replace(/^file:\/\//, ""))
     }
 
-    FileDialog {
+    FolderDialog {
         id: folderPicker
         title: "Select game client folder"
-        // NOTE: FileDialog.OpenDirectory is undefined on some backends
-        // (offscreen probe: OpenFile=0, OpenDirectory=undefined) — the
-        // folder mode is the dialog default, so only set fileMode when
-        // the enum exists.
-        Component.onCompleted: {
-            if (FileDialog.OpenDirectory !== undefined)
-                fileMode = FileDialog.OpenDirectory
-        }
-        onAccepted: wizard.setFolder(currentFolder.toString().replace(/^file:\/\//, ""))
+        onAccepted: wizard.setFolder(selectedFolder.toString().replace(/^file:\/\//, ""))
     }
 }

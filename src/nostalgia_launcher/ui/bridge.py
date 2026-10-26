@@ -30,6 +30,8 @@ thin convenience that assembles the seven controllers on one shared dispatcher
 together with the bridge — the main window may equally do the assembly by hand.
 """
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from ..controllers.addons import AddonsController
@@ -82,7 +84,9 @@ class ControllerBridge(QObject):
     gameLaunched = Signal(int, int)
     gameExited = Signal(int, object)
 
-    def __init__(self, dispatcher: EventDispatcher, parent=None):
+    def __init__(
+        self, dispatcher: EventDispatcher, parent: QObject | None = None
+    ) -> None:
         super().__init__(parent)
         self._dispatcher = dispatcher
         self._closed = False
@@ -94,11 +98,11 @@ class ControllerBridge(QObject):
         self._timer.start()
 
     @Slot()
-    def _drain(self):
+    def _drain(self) -> None:
         """Drain the pending events and emit the matching signal per event."""
         self._dispatcher.dispatch_all()
 
-    def _on_event(self, event):
+    def _on_event(self, event: object) -> None:
         if isinstance(event, StatusChanged):
             self.statusChanged.emit(event.text)
         elif isinstance(event, LogMessage):
@@ -127,7 +131,7 @@ class ControllerBridge(QObject):
         elif isinstance(event, GameExited):
             self.gameExited.emit(event.pid, event.exit_code)
 
-    def close(self):
+    def close(self) -> None:
         """Stop polling and unsubscribe from the dispatcher.
 
         Idempotent: repeated shutdown (e.g. the window close and test
@@ -138,7 +142,7 @@ class ControllerBridge(QObject):
         self._timer.stop()
         self._dispatcher.unsubscribe(self._subscription)
 
-    def stop(self):
+    def stop(self) -> None:
         """Alias for close()."""
         self.close()
 
@@ -151,7 +155,7 @@ class ControllerHub:
     ready-made wiring in one line. The bridge shares the hub's dispatcher.
     """
 
-    def __init__(self, get_out_dir=None):
+    def __init__(self, get_out_dir: Callable[[], str] | None = None) -> None:
         self.dispatcher = EventDispatcher()
         from ..core import log_sink as _log_sink
 
@@ -171,7 +175,7 @@ class ControllerHub:
         )
         self.bridge = ControllerBridge(self.dispatcher)
 
-    def close(self):
+    def close(self) -> None:
         self.bridge.close()
         from ..core import log_sink as _log_sink
 

@@ -29,7 +29,6 @@ def engine(qapp):
     from PySide6.QtCore import QUrl
     from PySide6.QtQml import QQmlApplicationEngine
 
-    from nostalgia_launcher.ui.qml.addons import AddonsModel
     from nostalgia_launcher.ui.qml.app import qml_dir
     from nostalgia_launcher.ui.qml.content import ContentListModel
     from nostalgia_launcher.ui.qml.custom import (
@@ -43,7 +42,7 @@ def engine(qapp):
         LauncherState,
         NewsFeedModel,
         ThemeBridge,
-        UpdateState,
+        UpdateViewState,
     )
     from nostalgia_launcher.ui.qml.wizard import WizardModel
     from nostalgia_launcher.ui.theme import Palette
@@ -52,12 +51,14 @@ def engine(qapp):
     eng.rootContext().setContextProperty("launcherState", LauncherState())
     eng.rootContext().setContextProperty("appTheme", ThemeBridge(Palette()))
     eng.rootContext().setContextProperty("newsModel", NewsFeedModel())
-    eng.rootContext().setContextProperty("updateState", UpdateState())
+    eng.rootContext().setContextProperty("updateState", UpdateViewState())
     mods = ContentListModel("mods empty")
     assets = ContentListModel("assets empty")
     eng.rootContext().setContextProperty("modsModel", mods)
     eng.rootContext().setContextProperty("assetsModel", assets)
-    eng.rootContext().setContextProperty("addonsModel", AddonsModel())
+    eng.rootContext().setContextProperty(
+        "addonsModel", ContentListModel("addons empty")
+    )
     eng.rootContext().setContextProperty("settingsModel", SettingsModel())
     eng.rootContext().setContextProperty("logModel", LogModel())
     eng.rootContext().setContextProperty("wizard", WizardModel())
@@ -214,6 +215,24 @@ def test_browse_addons_dialog_loads(engine):
     eng, _mods, _assets = engine
     root = eng.rootObjects()[0]
     assert root.findChild(QObject, "qmlBrowseAddonsDialog") is not None
+
+
+def test_browse_dialogs_have_scrollbar_and_tabs(engine):
+    from PySide6.QtCore import QObject
+
+    eng, _mods, _assets = engine
+    root = eng.rootObjects()[0]
+    for name in (
+        "qmlBrowseModsDialog",
+        "qmlBrowseAssetsDialog",
+        "qmlBrowseAddonsDialog",
+    ):
+        dlg = root.findChild(QObject, name)
+        assert dlg is not None
+        assert dlg.findChild(QObject, "qmlBrowseTabs") is not None
+        browse_list = dlg.findChild(QObject, "qmlBrowseList")
+        assert browse_list is not None
+        assert browse_list.findChild(QObject, "qmlBrowseScrollBar") is not None
 
 
 def test_set_selected_toggles_entry_role(model):

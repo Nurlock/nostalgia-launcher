@@ -40,16 +40,16 @@ ApplicationWindow {
             anchors.rightMargin: 16
             Label {
                 objectName: "qmlWordmark"
-                visible: launcherState.logoSource === ""
-                text: launcherState.serverName !== "" ? launcherState.serverName : "NOSTALGIA LAUNCHER"
+                visible: launcherState ? launcherState.logoSource === "" : true
+                text: launcherState && launcherState.serverName !== "" ? launcherState.serverName : "NOSTALGIA LAUNCHER"
                 font.bold: true
                 font.pointSize: 13
                 color: appTheme.colors["C_GOLD_LT"]
             }
             Image {
                 objectName: "qmlLogo"
-                visible: launcherState.logoSource !== ""
-                source: launcherState.logoSource
+                visible: launcherState ? launcherState.logoSource !== "" : false
+                source: launcherState ? launcherState.logoSource : ""
                 // Widget-shell parity: fit within 28px tall, 320px wide.
                 // Height drives the scale (aspect kept); maximumWidth
                 // caps very wide logos. No sourceSize.width: upscaling a
@@ -67,8 +67,8 @@ ApplicationWindow {
                 Accessible.name: "Active profile"
                 ToolTip.text: "Active profile — selecting another one restarts the launcher"
                 ToolTip.visible: hovered
-                model: settingsModel.profiles
-                currentIndex: Math.max(0, settingsModel.profiles.indexOf(settingsModel.activeProfile))
+                model: settingsModel ? settingsModel.profiles : []
+                currentIndex: settingsModel ? Math.max(0, settingsModel.profiles.indexOf(settingsModel.activeProfile)) : 0
                 onActivated: (index) => settingsModel.requestSwitch(textAt(index))
                 Layout.preferredWidth: 320
                 Layout.maximumWidth: 420
@@ -89,8 +89,8 @@ ApplicationWindow {
             }
             Label {
                 objectName: "qmlVersionPill"
-                visible: settingsModel.clientVersion !== ""
-                text: settingsModel.clientVersion
+                visible: settingsModel ? settingsModel.clientVersion !== "" : false
+                text: settingsModel ? settingsModel.clientVersion : ""
                 font.pointSize: 11
                 font.bold: true
                 color: appTheme.colors["C_TEXT"]
@@ -115,22 +115,22 @@ ApplicationWindow {
     MessageDialog {
         id: switchConfirm
         title: "Switch profile"
-        text: "Switch to profile '" + settingsModel.switchPrompt + "'? (The launcher will restart.)"
+        text: "Switch to profile '" + (settingsModel ? settingsModel.switchPrompt : "") + "'? (The launcher will restart.)"
         buttons: MessageDialog.Yes | MessageDialog.No
-        visible: settingsModel.switchPrompt !== ""
+        visible: settingsModel ? settingsModel.switchPrompt !== "" : false
         onAccepted: settingsModel.resolveSwitch(true)
         onRejected: {
             settingsModel.resolveSwitch(false)
-            profileCombo.currentIndex = Math.max(0, settingsModel.profiles.indexOf(settingsModel.activeProfile))
+            profileCombo.currentIndex = Math.max(0, settingsModel ? settingsModel.profiles.indexOf(settingsModel.activeProfile) : 0)
         }
     }
 
     MessageDialog {
         id: realmConfirm
         title: "Realm mismatch"
-        text: updateState.realmPrompt + "\n\nUpdate the realm before launching?"
+        text: (updateState ? updateState.realmPrompt : "") + "\n\nUpdate the realm before launching?"
         buttons: MessageDialog.Yes | MessageDialog.No
-        visible: updateState.realmPrompt !== ""
+        visible: updateState ? updateState.realmPrompt !== "" : false
         onAccepted: updateState.resolveRealm(true)
         onRejected: updateState.resolveRealm(false)
     }
@@ -196,20 +196,20 @@ ApplicationWindow {
             TabButton {
                 objectName: "qmlUpdateTab"
                 text: "UPDATE"
-                enabled: settingsModel.clientUpdates && updateState.updateTabEnabled
+                enabled: (settingsModel ? settingsModel.clientUpdates : false) && (updateState ? updateState.updateTabEnabled : false)
                 onEnabledChanged: {
                     if (!enabled && navBar.currentIndex === 1)
                         navBar.currentIndex = 0
                 }
             }
             TabButton {
-                text: addonsModel.updatesCount > 0 ? "ADDONS (" + addonsModel.updatesCount + ")" : "ADDONS"
+                text: (addonsModel ? addonsModel.updatesCount : 0) > 0 ? "ADDONS (" + addonsModel.updatesCount + ")" : "ADDONS"
             }
             TabButton {
-                text: modsModel.updatesCount > 0 ? "MODS (" + modsModel.updatesCount + ")" : "MODS"
+                text: (modsModel ? modsModel.updatesCount : 0) > 0 ? "MODS (" + modsModel.updatesCount + ")" : "MODS"
             }
             TabButton {
-                text: assetsModel.updatesCount > 0 ? "ASSETS (" + assetsModel.updatesCount + ")" : "ASSETS"
+                text: (assetsModel ? assetsModel.updatesCount : 0) > 0 ? "ASSETS (" + assetsModel.updatesCount + ")" : "ASSETS"
             }
         }
 
@@ -226,17 +226,20 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
             }
-            AddonsView {
+            ContentView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                contentModel: addonsModel
+                tabTitle: "ADDONS"
+                legendText: "☑ = uninstall on confirm · ● = marked for uninstall"
+                loadingText: "Loading addons…"
             }
             ContentView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 contentModel: modsModel
                 tabTitle: "MODS"
-                legendText: "★ required · ☐ off = disabled · ● = unapplied (Apply to confirm)"
-                essentialText: "★  Install Required"
+                legendText: "☑ = uninstall on confirm · ● = marked for uninstall"
                 loadingText: "Loading mods…"
             }
             ContentView {
@@ -244,8 +247,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 contentModel: assetsModel
                 tabTitle: "ASSETS"
-                legendText: "☐ off = disabled · ● = unapplied (Apply to confirm)"
-                essentialText: "★  Install Essential"
+                legendText: "☑ = uninstall on confirm · ● = marked for uninstall"
                 loadingText: "Loading assets…"
             }
         }
@@ -263,7 +265,7 @@ ApplicationWindow {
             Label {
                 objectName: "qmlStatusLabel"
                 Layout.fillWidth: true
-                text: launcherState.statusText
+                text: launcherState ? launcherState.statusText : ""
                 elide: Text.ElideRight
                 font.pointSize: 10
                 color: appTheme.colors["C_TEXT"]
@@ -273,14 +275,14 @@ ApplicationWindow {
                 Layout.preferredWidth: 220
                 from: 0
                 to: 100
-                value: launcherState.progressValue * 100
-                visible: launcherState.progressVisible
+                value: launcherState ? launcherState.progressValue * 100 : 0
+                visible: launcherState ? launcherState.progressVisible : false
             }
             Button {
                 objectName: "qmlPrimaryButton"
-                text: updateState.primaryLabel
-                enabled: updateState.primaryEnabled
-                onClicked: updateState.primary()
+                text: updateState ? updateState.primaryLabel : ""
+                enabled: updateState ? updateState.primaryEnabled : false
+                onClicked: if (updateState) updateState.primary()
             }
         }
     }

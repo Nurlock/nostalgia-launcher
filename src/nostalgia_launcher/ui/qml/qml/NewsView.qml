@@ -3,7 +3,11 @@
 // dated entries (date / title / author / body / link). Reads the
 // `newsModel` context property (ui/qml/viewmodels.py:NewsFeedModel).
 // Load failure (error, unconfigured, or empty feed) swaps the content
-// column for a centered 404 + Play overlay (`newsModel.failed`).
+// column for a centered logo + Play overlay (`newsModel.failed`).
+// The 404 numeral and status line only show for configured feeds;
+// unconfigured feeds get just logo + Play.
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
@@ -20,7 +24,7 @@ Item {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        visible: !newsModel.failed
+        visible: Boolean(newsModel && !newsModel.failed)
         ToolBar {
             Layout.fillWidth: true
             background: Rectangle {
@@ -43,7 +47,7 @@ Item {
                     Accessible.name: "Refresh announcements"
                     ToolTip.text: "Refresh"
                     ToolTip.visible: hovered
-                    onClicked: newsModel.refresh()
+                    onClicked: if (newsModel) newsModel.refresh()
                 }
             }
         }
@@ -58,32 +62,9 @@ Item {
             Layout.leftMargin: 14
             Layout.topMargin: 6
             visible: text !== ""
-            text: newsModel.statusText
+            text: newsModel ? newsModel.statusText : ""
             font.pointSize: 9
             color: appTheme.colors["C_TEXT_DIM"]
-        }
-        Label {
-            Layout.fillWidth: true
-            Layout.leftMargin: 14
-            Layout.rightMargin: 14
-            Layout.topMargin: 6
-            visible: newsModel.featuredTitle !== ""
-            text: "★ " + newsModel.featuredTitle
-            Accessible.name: "Featured announcement: " + newsModel.featuredTitle
-            ToolTip.text: newsModel.featuredUrl !== "" ? "Open announcement in browser" : ""
-            ToolTip.visible: featuredHover.containsMouse && newsModel.featuredUrl !== ""
-            MouseArea {
-                id: featuredHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                enabled: newsModel.featuredUrl !== ""
-                onClicked: Qt.openUrlExternally(newsModel.featuredUrl)
-            }
-            font.bold: true
-            font.pointSize: 11
-            color: appTheme.colors["C_GOLD"]
-            elide: Text.ElideRight
         }
         ListView {
             id: newsList
@@ -92,24 +73,26 @@ Item {
             Layout.fillHeight: true
             Layout.topMargin: 4
             clip: true
-            model: newsModel
+            model: newsModel ? newsModel : null
             delegate: ColumnLayout {
-                width: newsList.width
+                id: newsItem
+                required property var model
+                width: ListView.view.width
                 spacing: 2
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.date
+                    text: newsItem.model.date
                     font.pointSize: 9
                     color: appTheme.colors["C_TEXT_DIM"]
-                    visible: model.date !== ""
+                    visible: newsItem.model.date !== ""
                 }
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.title
+                    text: newsItem.model.title
                     font.bold: true
                     font.pointSize: 11
                     color: appTheme.colors["C_GOLD"]
@@ -119,28 +102,28 @@ Item {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.author
+                    text: newsItem.model.author
                     font.italic: true
                     font.pointSize: 10
                     color: appTheme.colors["C_TEXT_DIM"]
-                    visible: model.author !== ""
+                    visible: newsItem.model.author !== ""
                 }
                 Label {
                     Layout.fillWidth: true
                     Layout.leftMargin: 14
                     Layout.rightMargin: 14
-                    text: model.body
+                    text: newsItem.model.body
                     font.pointSize: 10
                     color: appTheme.colors["C_TEXT"]
                     wrapMode: Text.WordWrap
-                    visible: model.body !== ""
+                    visible: newsItem.model.body !== ""
                 }
                 Button {
                     Layout.leftMargin: 14
                     flat: true
                     text: "Read more ⧉"
-                    visible: model.url !== ""
-                    onClicked: Qt.openUrlExternally(model.url)
+                    visible: newsItem.model.url !== ""
+                    onClicked: Qt.openUrlExternally(newsItem.model.url)
                 }
                 Rectangle {
                     Layout.fillWidth: true
@@ -158,14 +141,14 @@ Item {
     // so the switch renders centered on the first frame.
     Item {
         anchors.fill: parent
-        visible: newsModel.failed
+        visible: Boolean(newsModel && newsModel.failed)
         ColumnLayout {
             anchors.centerIn: parent
             spacing: 12
             Image {
                 Layout.alignment: Qt.AlignHCenter
-                visible: launcherState.logoSource !== ""
-                source: launcherState.logoSource
+                visible: Boolean(launcherState && launcherState.logoSource !== "")
+                source: launcherState ? launcherState.logoSource : ""
                 sourceSize.height: 128
                 fillMode: Image.PreserveAspectFit
                 Layout.preferredHeight: 128
@@ -173,25 +156,29 @@ Item {
                 Accessible.name: "Server logo"
             }
             Label {
+                objectName: "qmlNewsFallbackCode"
                 Layout.alignment: Qt.AlignHCenter
+                visible: Boolean(newsModel && newsModel.configured)
                 text: "404"
                 font.pointSize: 48
                 font.bold: true
                 color: appTheme.colors["C_GOLD"]
             }
             Label {
+                objectName: "qmlNewsFallbackStatus"
                 Layout.alignment: Qt.AlignHCenter
-                text: newsModel.statusText
+                visible: Boolean(newsModel && newsModel.configured && text !== "")
+                text: newsModel ? newsModel.statusText : ""
                 font.pointSize: 10
                 color: appTheme.colors["C_TEXT_DIM"]
             }
             Button {
                 Layout.alignment: Qt.AlignHCenter
                 objectName: "qmlNewsPlay"
-                text: updateState.primaryLabel
-                enabled: updateState.primaryEnabled
+                text: updateState ? updateState.primaryLabel : ""
+                enabled: updateState ? updateState.primaryEnabled : false
                 highlighted: true
-                onClicked: updateState.primary()
+                onClicked: if (updateState) updateState.primary()
             }
         }
     }

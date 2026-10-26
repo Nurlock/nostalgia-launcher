@@ -1,8 +1,9 @@
-"""QML content-list tests (Phase 5: shared MODS/ASSETS core).
+"""QML manage-list tests (shared ADDONS/MODS/ASSETS uninstall list).
 
-Covers the row builder (sorting, enabled precedence, required/version
-mapping), the model (filter matrix, chrome, action seams, echo guard) and
-the engine views (both tabs load, badges, search, empty state, footer).
+Covers the row builder (sorting, uninstall staging, server-managed
+locking), the model (text filter, chrome, apply/reload seams, echo
+guard), the addon tab adapter and the engine views (three tabs load,
+badges, search, empty state, footer).
 """
 
 import os
@@ -21,13 +22,8 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
-from nostalgia_launcher.ui.qml.addons import AddonsModel
 from nostalgia_launcher.ui.qml.app import qml_dir
-from nostalgia_launcher.ui.qml.content import (
-    ContentListModel,
-    build_rows,
-    essential_pending,
-)
+from nostalgia_launcher.ui.qml.content import ContentListModel, build_rows
 from nostalgia_launcher.ui.qml.custom import (
     CustomAddonModel,
     CustomAssetModel,
@@ -39,7 +35,7 @@ from nostalgia_launcher.ui.qml.viewmodels import (
     LauncherState,
     NewsFeedModel,
     ThemeBridge,
-    UpdateState,
+    UpdateViewState,
 )
 from nostalgia_launcher.ui.qml.wizard import WizardModel
 from nostalgia_launcher.ui.theme import Palette
@@ -50,14 +46,12 @@ ENTRIES = [
         "name": "B Mod",
         "description": "Second",
         "repo_url": "",
-        "installation": "user_opt_in",
     },
     {
         "id": "a-mod",
         "name": "A Mod",
         "description": "First shiny",
         "repo_url": "https://example.test/a",
-        "installation": "required",
     },
 ]
 
@@ -93,12 +87,12 @@ def engine(qapp):
     eng.rootContext().setContextProperty("launcherState", LauncherState())
     eng.rootContext().setContextProperty("appTheme", ThemeBridge(Palette()))
     eng.rootContext().setContextProperty("newsModel", NewsFeedModel())
-    eng.rootContext().setContextProperty("updateState", UpdateState())
+    eng.rootContext().setContextProperty("updateState", UpdateViewState())
     mods = ContentListModel("mods empty")
     assets = ContentListModel("assets empty")
     eng.rootContext().setContextProperty("modsModel", mods)
     eng.rootContext().setContextProperty("assetsModel", assets)
-    _addons_fixture = AddonsModel()
+    _addons_fixture = ContentListModel("addons empty")
     eng.rootContext().setContextProperty("addonsModel", _addons_fixture)
     eng.rootContext().setContextProperty("settingsModel", SettingsModel())
     eng.rootContext().setContextProperty("logModel", LogModel())
@@ -124,55 +118,54 @@ def test_build_rows_sorts_and_maps():
             "a-mod": _rec(present=True, enabled=True, installed_version="1.0")
         },
         pending={},
-        latest_versions={"b-mod": "2.0"},
     )
-    rows = build_rows(
-        ENTRIES,
-        state,
-        required_of=lambda e: e.get("installation") == "required",
-        version_of=lambda e, r, s: (
-            (r.installed_version if r else None)
-            or s.latest_versions.get(e["id"])
-            or "unknown"
-        ),
-        action_for=lambda eid: "update" if eid == "b-mod" else None,
-    )
+    rows = build_rows(ENTRIES, state)
     assert [r["eid"] for r in rows] == ["a-mod", "b-mod"]
-    assert rows[0]["required"] is True
-    assert rows[0]["version"] == "1.0"
     assert rows[0]["installed"] is True
-    assert rows[1]["version"] == "2.0"
-    assert rows[1]["action"] == "update"
-    assert rows[1]["repoUrl"] == ""
     assert rows[0]["repoUrl"] == "https://example.test/a"
+    assert rows[1]["repoUrl"] == ""
+    assert set(rows[0]) == {
+        "eid",
+        "name",
+        "description",
+        "repoUrl",
+        "installed",
+        "enabled",
+        "serverManaged",
+        "staged",
+        "needsUpdate",
+    }
 
 
 def test_build_rows_pending_overrides_enabled():
     state = SimpleNamespace(
         records={"a-mod": _rec(enabled=False)},
-        pending={"a-mod": SimpleNamespace(enabled=True)},
-        latest_versions={},
+        pending={"a-mod": SimpleNamespace(enabled=False)},
     )
-    rows = build_rows(
-        [ENTRIES[1]],
-        state,
-        required_of=lambda e: False,
-        version_of=lambda e, r, s: "unknown",
-        action_for=lambda eid: None,
-    )
+    rows = build_rows([ENTRIES[1]], state)
+    # A tick stages removal: pending.enabled False → checked on.
     assert rows[0]["enabled"] is True
+    assert rows[0]["staged"] is True
 
 
-def test_essential_pending():
-    state = SimpleNamespace(records={}, pending={}, latest_versions={})
+def test_build_rows_unticked_by_default():
+    state = SimpleNamespace(
+        records={"a-mod": _rec(enabled=True, present=True)},
+        pending={},
+    )
+    rows = build_rows([ENTRIES[1]], state)
+    # Installed but untouched: checkbox off, not staged.
+    assert rows[0]["enabled"] is False
+    assert rows[0]["staged"] is False
 
-    def req(entry):
-        return entry.get("installation") == "required"
 
-    assert essential_pending(ENTRIES, state, required_of=req) is True
-    state.records["a-mod"] = _rec(present=True)
-    assert essential_pending(ENTRIES, state, required_of=req) is False
-    assert essential_pending([], state, required_of=req) is False
+def test_build_rows_marks_server_managed():
+    state = SimpleNamespace(records={}, pending={})
+    rows = build_rows(
+        [{"id": "manifest-x", "name": "X", "description": "d"}], state
+    )
+    assert rows[0]["serverManaged"] is True
+    assert "server" in rows[0]["description"]
 
 
 # ── model ─────────────────────────────────────────────────────────────
@@ -183,53 +176,32 @@ def _snapshot(model, **kw):
         {
             "eid": "a",
             "name": "Alpha",
-            "version": "1.0",
             "description": "shiny alpha",
             "repoUrl": "",
             "installed": True,
             "enabled": True,
-            "required": True,
-            "action": "",
-            "error": "",
+            "serverManaged": False,
+            "staged": True,
+            "needsUpdate": True,
         },
         {
             "eid": "b",
             "name": "Beta",
-            "version": "2.0",
             "description": "beta things",
             "repoUrl": "",
             "installed": False,
             "enabled": False,
-            "required": False,
-            "action": "update",
-            "error": "",
-        },
-        {
-            "eid": "c",
-            "name": "Gamma",
-            "version": "?",
-            "description": "broken",
-            "repoUrl": "",
-            "installed": False,
-            "enabled": False,
-            "required": False,
-            "action": "retry",
-            "error": "boom",
+            "serverManaged": False,
+            "staged": False,
+            "needsUpdate": False,
         },
     ]
-    base = {
-        "updates_count": 1,
-        "has_pending": False,
-        "has_errors": True,
-        "essential_pending": True,
-    }
+    base = {"updates_count": 1, "pending_count": 1}
     base.update(kw)
     model.set_snapshot(
         rows,
         updates_count=base["updates_count"],
-        has_pending=base["has_pending"],
-        has_errors=base["has_errors"],
-        essential_pending=base["essential_pending"],
+        pending_count=base["pending_count"],
     )
 
 
@@ -239,41 +211,26 @@ def test_roles(model):
     assert model.data(idx, ContentListModel.EIDRole) == "a"
     assert model.data(idx, ContentListModel.NameRole) == "Alpha"
     assert model.data(idx, ContentListModel.EnabledRole) is True
+    assert model.data(idx, ContentListModel.NeedsUpdateRole) is True
     assert model.data(idx, Qt.ItemDataRole.DisplayRole) is None
-
-
-def test_filter_modes(model):
-    _snapshot(model)
-    assert model.rowCount() == 3
-    model.setFilterMode("installed")
-    assert model.rowCount() == 1
-    model.setFilterMode("updates")
-    # "update" + "retry" rows: error rows survive the Updates filter
-    # so a failed entry is never stranded out of sight.
-    assert model.rowCount() == 2
-    model.setFilterMode("all")
-    assert model.rowCount() == 3
-    model.setFilterMode("bogus")
-    assert model.property("filterMode") == "all"
 
 
 def test_filter_text(model):
     _snapshot(model)
+    assert model.rowCount() == 2
     model.setFilterText("shiny")
     assert model.rowCount() == 1
     model.setFilterText("BETA")
     assert model.rowCount() == 1
     model.setFilterText("")
-    assert model.rowCount() == 3
+    assert model.rowCount() == 2
 
 
 def test_chrome(model):
     _snapshot(model)
     assert model.property("updatesCount") == 1
-    assert model.property("applyVisible") is True
-    assert model.property("essentialEnabled") is True
+    assert model.property("pendingCount") == 1
     model.set_running(True)
-    assert model.property("essentialEnabled") is False
     assert model.property("busy") is True
     model.set_running(False)
 
@@ -289,43 +246,136 @@ def test_toggle_echo_guard(model):
     calls = []
     model.set_handlers(toggle=lambda eid, c: calls.append((eid, c)))
     _snapshot(model)
+    # Row "a" renders checked=True (staged for uninstall): echoing the
+    # tick reaches no handler…
     model.toggleEntry("a", True)
     assert calls == []
+    # …while unticking flips through to the handler.
     model.toggleEntry("a", False)
     assert calls == [("a", False)]
     model.toggleEntry("missing", True)
     assert calls == [("a", False)]
 
 
-def test_action_apply_essential_reload(model):
+def test_toggle_emits_datachanged_not_modelreset(model):
+    """Updating row state must emit dataChanged in place rather than
+    resetting the model (which would scroll the QML ListView to the top)."""
+    _snapshot(model)
+    resets = []
+    changes = []
+    model.modelReset.connect(lambda: resets.append(True))
+    model.dataChanged.connect(
+        lambda tl, br, _r: changes.append((tl.row(), br.row()))
+    )
+
+    updated_rows = [
+        {
+            "eid": "a",
+            "name": "Alpha",
+            "description": "shiny alpha",
+            "repoUrl": "",
+            "installed": True,
+            "enabled": False,
+            "serverManaged": False,
+            "staged": False,
+            "needsUpdate": False,
+        },
+        {
+            "eid": "b",
+            "name": "Beta",
+            "description": "beta things",
+            "repoUrl": "",
+            "installed": False,
+            "enabled": False,
+            "serverManaged": False,
+            "staged": False,
+            "needsUpdate": False,
+        },
+    ]
+    model.set_snapshot(updated_rows)
+    assert resets == []
+    assert len(changes) == 1
+    assert changes[0] == (0, 0)
+    assert model.data(model.index(0, 0), ContentListModel.EnabledRole) is False
+
+
+def test_apply_reload(model):
     calls = []
     model.set_handlers(
-        action=lambda eid: calls.append(("act", eid)) or True,
         apply=lambda: calls.append(("apply",)) or True,
-        essential=lambda: calls.append(("essential",)) or False,
         reload=lambda: calls.append(("reload",)),
     )
     _snapshot(model)
-    model.actOn("b")
-    assert ("act", "b") in calls
-    assert model.property("busy") is True
-    model.set_running(False)
-    model.installEssential()
-    assert ("essential",) in calls
-    assert model.property("busy") is False
     model.applyAll()
     assert ("apply",) in calls
     assert model.property("busy") is True
+    assert model.property("busyAction") == "apply"
     model.set_running(False)
+    assert model.property("busyAction") == ""
     model.reloadCatalog()
     assert ("reload",) in calls
 
 
+def test_update_action(model):
+    calls = []
+    model.set_handlers(
+        update=lambda: calls.append(("update",)) or True,
+    )
+    _snapshot(model, updates_count=2)
+    assert model.property("busyAction") == ""
+    model.updateAll()
+    assert ("update",) in calls
+    assert model.property("busy") is True
+    assert model.property("busyAction") == "update"
+    model.set_running(False)
+    assert model.property("busyAction") == ""
+
+
+def test_update_one_action(model):
+    calls = []
+    model.set_handlers(
+        update_one=lambda eid: calls.append(eid) or True,
+    )
+    _snapshot(model)
+    model.updateOne("a")
+    assert calls == ["a"]
+    assert model.property("busy") is True
+    assert model.property("busyAction") == "update"
+    model.set_running(False)
+    assert model.property("busyAction") == ""
+
+
+def test_build_rows_needs_update_addons():
+    state = SimpleNamespace(
+        records={},
+        pending={},
+        addons={
+            "a-mod": SimpleNamespace(status="outOfDate"),
+            "b-mod": SimpleNamespace(status="upToDate"),
+        },
+    )
+    rows = build_rows(ENTRIES, state)
+    assert rows[0]["needsUpdate"] is True
+    assert rows[1]["needsUpdate"] is False
+
+
+def test_build_rows_needs_update_mods():
+    state = SimpleNamespace(
+        records={
+            "a-mod": _rec(present=True, installed_version="1.0"),
+            "b-mod": _rec(present=True, installed_version="2.0"),
+        },
+        pending={},
+        latest_versions={"a-mod": "1.1", "b-mod": "2.0"},
+    )
+    rows = build_rows(ENTRIES, state)
+    assert rows[0]["needsUpdate"] is True
+    assert rows[1]["needsUpdate"] is False
+
+
 def test_refresh_uses_provider(model):
     _snapshot(model, updates_count=0)
-    model.set_snapshot_provider(
-        lambda: ([], 0, False, False, False, [], "", 0)
-    )
+    model.set_snapshot_provider(lambda: ([], 0, 0))
     model.refresh()
     assert model.rowCount() == 0
     assert model.property("updatesCount") == 0
@@ -337,8 +387,19 @@ def test_refresh_uses_provider(model):
 def test_content_tabs_load(engine):
     eng, _mods, _assets = engine
     root = eng.rootObjects()[0]
-    assert len(root.findChildren(QObject, "qmlContentView")) == 2
+    assert len(root.findChildren(QObject, "qmlContentView")) == 3
     assert root.findChild(QObject, "qmlNavBar") is not None
+
+
+def test_content_view_has_scrollbar(engine):
+    eng, _mods, _assets = engine
+    root = eng.rootObjects()[0]
+    scrollbars = root.findChildren(QObject, "qmlContentScrollBar")
+    assert len(scrollbars) == 3
+    lists = root.findChildren(QObject, "qmlContentList")
+    assert len(lists) == 3
+    for lst in lists:
+        assert lst.findChild(QObject, "qmlContentScrollBar") is not None
 
 
 def test_mods_tab_follows_model(engine):
@@ -347,7 +408,7 @@ def test_mods_tab_follows_model(engine):
     root.findChild(QObject, "qmlNavBar").setProperty("currentIndex", 3)
     _snapshot(mods)
     lists = root.findChildren(QObject, "qmlContentList")
-    assert any(lst.property("count") == 3 for lst in lists)
+    assert any(lst.property("count") == 2 for lst in lists)
 
 
 def test_search_filters_engine_list(engine):
@@ -375,178 +436,120 @@ def test_nav_badge_follows_updates(engine):
     assert "MODS (1)" in texts
 
 
-# ── extras ────────────────────────────────────────────────────────────
-
-
-def test_unknown_sections():
-    from nostalgia_launcher.ui.qml.content import unknown_sections
-
-    assert unknown_sections([]) == []
-    assert unknown_sections(None) == []
-    sections = unknown_sections(["stray.dll"])
-    assert sections[0]["title"] == "Detected (not in catalog)"
-    assert sections[0]["rows"][0] == {
-        "name": "stray.dll",
-        "meta": "",
-        "action": "Remove",
-        "confirm": "",
-    }
-
-
-def test_managed_names():
-    from nostalgia_launcher.ui.qml.content import managed_names
-
-    registry = [
-        {"id": "a", "name": "Patch A", "dest": "Data\\patch-a.mpq"},
-        {"id": "b", "name": "No dest"},
-    ]
-    assert managed_names(registry) == {
-        "patch-a.mpq": "Patch A (launcher asset)"
-    }
-
-
-def test_scan_extras_no_client():
-    from nostalgia_launcher.ui.qml.content import scan_extras
-
-    headline, sections = scan_extras({}, {}, "")
-    assert "game folder" in headline
-    assert sections == []
-
-
-def test_scan_extras_bundles_everything():
-    from nostalgia_launcher.ui.qml.content import scan_extras
-
-    scan = {
-        "version": "1.12.1",
-        "stock": ["Data/patch.mpq"],
-        "custom_managed": [{"path": "Data/patch-a.mpq", "size": 8}],
-        "custom_foreign": [{"path": "Data/stray.mpq", "size": 4}],
-    }
-    headline, sections = scan_extras(
-        scan, {"patch-a.mpq": "Patch A (launcher asset)"}, "/games/wow"
-    )
-    assert "3 bundled" in headline
-    assert len(sections) == 1
-    assert sections[0]["title"] == "Bundled"
-    rows = sections[0]["rows"]
-    assert [r["name"] for r in rows] == [
-        "Data/patch-a.mpq",
-        "Data/patch.mpq",
-        "Data/stray.mpq",
-    ]
-    assert all(r["action"] == "" and r["confirm"] == "" for r in rows)
-    assert "Patch A" in rows[0]["meta"]
-
-
-def test_extras_snapshot_and_confirm(model):
-    extras = [
-        {
-            "title": "Foreign / untracked",
-            "color": "err",
-            "rows": [
-                {
-                    "name": "Data/x.mpq",
-                    "meta": "",
-                    "action": "Remove",
-                    "confirm": "Delete it?",
-                }
-            ],
-        }
-    ]
-    model.set_snapshot([], headline="scan!", extras=extras)
-    assert model.property("extraHeadline") == "scan!"
-    assert model.property("extraSections") == extras
-    calls = []
-    model.set_handlers(extra=lambda s, n: calls.append((s, n)))
-    model.requestExtra("Foreign / untracked", "Data/x.mpq")
-    assert model.property("extraConfirmText") == "Delete it?"
-    assert calls == []
-    model.confirmExtra()
-    assert calls == [("Foreign / untracked", "Data/x.mpq")]
-    assert model.property("extraConfirmText") == ""
-
-
-def test_extra_direct_action_and_cancel(model):
-    model.set_snapshot(
-        [],
-        extras=[
-            {
-                "title": "Detected (not in catalog)",
-                "color": "dim",
-                "rows": [
-                    {
-                        "name": "s.dll",
-                        "meta": "",
-                        "action": "Remove",
-                        "confirm": "",
-                    }
-                ],
-            }
-        ],
-    )
-    calls = []
-    model.set_handlers(extra=lambda s, n: calls.append((s, n)))
-    model.requestExtra("Detected (not in catalog)", "s.dll")
-    assert calls == [("Detected (not in catalog)", "s.dll")]
-    model.requestExtra("Nope", "s.dll")
-    assert len(calls) == 1
-    model.cancelExtra()
-    assert model.property("extraConfirmText") == ""
-
-
-def test_scan_version_follows_server_pin(model):
-    """No version selector: the scan always targets the server-pinned
-    client version."""
-    from nostalgia_launcher.ui.qml.content import assets_extras
-
-    seen = []
-
-    class _Ctrl:
-        registry = []
-
-        def data_scan(self, version):
-            seen.append(version)
-            return {
-                "version": version,
-                "stock": [],
-                "custom_managed": [],
-                "custom_foreign": [],
-            }
-
-        def client_dir(self):
-            return "/game"
-
-    from nostalgia_launcher.core import launcher
-
-    extras, headline = assets_extras(_Ctrl())
-    assert extras == []
-    assert seen == [(launcher.client_version() or "1.12.1")]
-    assert isinstance(headline, str)
-
-
-def test_extras_render_in_engine(engine):
+def test_update_button_in_engine(engine):
     eng, mods, _assets = engine
     root = eng.rootObjects()[0]
     root.findChild(QObject, "qmlNavBar").setProperty("currentIndex", 3)
-    _snapshot(mods)
-    mods.set_snapshot(
-        [],
-        extras=[
-            {
-                "title": "Detected (not in catalog)",
-                "color": "dim",
-                "rows": [
-                    {
-                        "name": "s.dll",
-                        "meta": "",
-                        "action": "Remove",
-                        "confirm": "",
-                    }
-                ],
-            }
-        ],
+    _snapshot(mods, updates_count=0)
+    update_btns = [
+        btn
+        for btn in root.findChildren(QObject, "qmlContentUpdate")
+        if btn.property("visible")
+    ]
+    assert len(update_btns) == 0
+    _snapshot(mods, updates_count=3)
+    update_btns = [
+        btn
+        for btn in root.findChildren(QObject, "qmlContentUpdate")
+        if btn.property("visible")
+    ]
+    assert len(update_btns) == 1
+    assert update_btns[0].property("text") == "Update (3)"
+
+
+# ── addon tab adapter ─────────────────────────────────────────────────
+
+
+def _addon_state(**kw):
+    base = {"addons": {}, "pending": {}, "updates_count": 0}
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def _addon_rec(folder, **kw):
+    base = {
+        "folder": folder,
+        "git": None,
+        "toc": {},
+        "description": None,
+    }
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_addon_tab_entries_strips_wow_colors():
+    from nostalgia_launcher.ui.qml.browse import addon_tab_entries
+
+    state = _addon_state(
+        addons={
+            "Foo": _addon_rec(
+                "Foo",
+                git="https://example.test/foo.git",
+                toc={"Title": "|cff00ff00Foo|r", "Notes": "|cFFFF0000shiny|r"},
+            )
+        }
     )
-    assert root.findChild(QObject, "qmlExtrasBottom") is not None
+    (entry,) = addon_tab_entries(state)
+    assert entry == {
+        "id": "Foo",
+        "name": "Foo",
+        "description": "shiny",
+        "repo_url": "https://example.test/foo",
+    }
+
+
+def test_addon_tab_entries_prefers_rec_name():
+    from nostalgia_launcher.ui.qml.browse import addon_tab_entries
+
+    state = _addon_state(
+        addons={
+            "Bar": _addon_rec(
+                "Bar",
+                name="Bar Enhanced",
+                toc={"Title": "Bar", "Notes": "notes"},
+            )
+        }
+    )
+    (entry,) = addon_tab_entries(state)
+    assert entry["id"] == "Bar"
+    assert entry["name"] == "Bar Enhanced"
+    assert entry["description"] == "notes"
+
+
+def test_addon_tab_entries_falls_back_to_folder():
+    from nostalgia_launcher.ui.qml.browse import addon_tab_entries
+
+    state = _addon_state(addons={"Bar": _addon_rec("Bar")})
+    (entry,) = addon_tab_entries(state)
+    assert entry["id"] == "Bar"
+    assert entry["name"] == "Bar"
+    assert entry["description"] == ""
+
+
+def test_addon_tab_rows_installed_plus_uninstall_staged():
+    from nostalgia_launcher.ui.qml.browse import addon_tab_rows
+
+    state = _addon_state(
+        addons={"Bar": _addon_rec("Bar")},
+        pending={
+            "Gone": SimpleNamespace(enabled=False),
+            "Kept": SimpleNamespace(enabled=True),
+        },
+    )
+    assert [e["id"] for e in addon_tab_rows(state)] == ["Bar"]
+
+
+def test_addon_tab_build_rows_tick():
+    from nostalgia_launcher.ui.qml.browse import addon_tab_rows
+
+    state = _addon_state(
+        addons={"Bar": _addon_rec("Bar")},
+        pending={"Bar": SimpleNamespace(enabled=False)},
+    )
+    (row,) = build_rows(addon_tab_rows(state), state)
+    assert row["eid"] == "Bar"
+    assert row["enabled"] is True
+    assert row["staged"] is True
 
 
 def test_loading_until_data_or_event(model):
@@ -561,14 +564,12 @@ def test_loading_until_data_or_event(model):
             {
                 "eid": "a",
                 "name": "A",
-                "version": "1",
                 "description": "",
                 "repoUrl": "",
                 "installed": False,
                 "enabled": False,
-                "required": False,
-                "action": "",
-                "error": "",
+                "serverManaged": False,
+                "staged": False,
             }
         ]
     )
@@ -595,39 +596,26 @@ def test_tab_rows_excludes_not_installed():
     assert [r["id"] for r in tab_rows(entries, state)] == ["a"]
 
 
-def test_tab_rows_keeps_errored_and_staged():
+def test_tab_rows_uninstall_staged_only():
+    """The manage tab is installed-only: present records plus rows
+    staged for uninstall — never error-only or install-staged rows."""
     from nostalgia_launcher.ui.qml.browse import tab_rows
 
     entries = [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}]
     state = SimpleNamespace(
-        records={"a": SimpleNamespace(present=False)},
-        pending={"b": SimpleNamespace(enabled=True)},
+        records={
+            "a": SimpleNamespace(present=False),
+            "b": SimpleNamespace(present=True),
+        },
+        pending={
+            "a": SimpleNamespace(enabled=False),
+            "b": SimpleNamespace(enabled=True),
+        },
     )
+    # b is present; a stays only because it is staged for uninstall.
+    # The enabled=True staging entry is not an uninstall stage.
     assert [r["id"] for r in tab_rows(entries, state)] == ["a", "b"]
-
-
-def test_assets_extras_returns_sections_first():
-    """Regression: the snapshot unpacks (extras, headline) — a swapped
-    tuple renders the sections list as headline text."""
-    from nostalgia_launcher.ui.qml.content import assets_extras
-
-    class _Ctrl:
-        registry = []
-
-        def data_scan(self, version):
-            return {
-                "version": version,
-                "stock": [],
-                "custom_managed": [],
-                "custom_foreign": [{"path": "Data/x.mpq", "size": 1}],
-            }
-
-        def client_dir(self):
-            return "/game"
-
-    extras, headline = assets_extras(_Ctrl())
-    assert isinstance(headline, str)
-    assert "title" not in headline
-    assert isinstance(extras, list)
-    assert extras[0]["title"] == "Bundled"
-    assert all(isinstance(e, dict) for e in extras)
+    state2 = SimpleNamespace(
+        records={"a": SimpleNamespace(present=False)}, pending={}
+    )
+    assert tab_rows(entries, state2) == []

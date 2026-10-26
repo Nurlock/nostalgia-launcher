@@ -169,7 +169,9 @@ the QLocalServer guard remains authoritative there.
   open/clear-custom buttons manage the repo files, and clear wipes only
   "custom".
 - **Registry precedence per vertical** (later wins by id/folder): remote
-  catalog < repo "server" < embedded-in-config (only live for direct
+  catalog < manifest-bundled entries (`services/manifest.py`, only when
+  `server.download.manifest` is configured) < repo "server" <
+  embedded-in-config (only live for direct
   ``--launcher-config`` runs, which never persist) < repo "custom".
   Plumbing: `catalog.read_local_repo` /
   write_local_repo` / `add_custom_entry` / `clear_custom_entries`;
@@ -177,7 +179,11 @@ the QLocalServer guard remains authoritative there.
 - The mods/addons/assets lists come from remote JSON catalogs
   (`services/catalog.py` holds the shared validation/merge logic; the fetch
   entry points live in `services/mods.py` / `services/addons.py` /
-  `services/assets.py`). `mods.mods_registry()` is
+  `services/assets.py`) plus optional **manifest-bundled entries**
+  (`services/manifest.py::bundled_mods` / `bundled_assets` — only when
+  `server.download.manifest` is configured; a server-owned manifest mapped
+  through the config's `schema` + `routes` into catalog-shaped asset/mod
+  entries, validated by the exact catalog validators). `mods.mods_registry()` is
   network-free on non-forced calls (cache → empty list). Catalogs auto-refresh
   at most weekly (`catalog.CATALOG_TTL`): startup serves the persisted cache
   instantly (ADDONS via a preview snapshot posted before the verify scan) and
@@ -190,14 +196,9 @@ the QLocalServer guard remains authoritative there.
   `mods.mods_registry()`.
 - **Mod entry schema** (`catalog.validate_mod`): every validated mod carries
   `type` (`"mod"` = DLL drop-in, default; `"external-launcher"` = provides the
-  game executable via `executable`) and `installation` (`"user_opt_in"`
-  default, `"required"` = startup auto-install / "Install Required" target).
-  Required is a default, never an enforcement: the row checkbox stays free,
-  and an explicit user opt-out (an `enabled: false` record) persists —
-  startup will NOT force-reinstall a required mod the user turned off.
-  `installation` is the only install-policy field (`"user_opt_in"` default,
-  `"required"` = startup auto-install / "Install Required" target); the
-  legacy `essential: true` boolean is gone. `register_dll` is a `list[str]`
+  game executable via `executable`). Every mod is user opt-in — there is no
+  auto-install policy; the user enables what they want in the MODS panel.
+  `register_dll` is a `list[str]`
   (no single-string form anymore) — one mod may wire several DLLs into
   `dlls.txt` (`services.mods.registered_dlls`), and an external-launcher
   needs none. Entries must name real on-disk DLLs that need dlls.txt
@@ -206,9 +207,10 @@ the QLocalServer guard remains authoritative there.
   client's injection list, not launcher bookkeeping.
   `client_versions` is optional metadata (no filtering yet). Game
   launch prefers the first on-disk executable from
-  `mods.external_launcher_executables()` — active external launchers only:
-  required ones always, opt-ins only when enabled in state, and only when the
-  exe exists — else the configured client exe (`server.client_executable`, default `"WoW.exe"`) via `core/filesystem.pick_game_executable`. There
+  `mods.external_launcher_executables()` — enabled external launchers only
+  (per-user record enabled, exe exists on disk) — else the configured
+  client exe (`server.client_executable`, default `"WoW.exe"`) via
+  `core/filesystem.pick_game_executable`. There
   is NO hardcoded loader preference.
 - **Custom entries are first-class**: MODS and ASSETS panels have an
   "+ Add custom …" banner button (`custom_mod_dialog.py` covers every
@@ -246,13 +248,15 @@ the QLocalServer guard remains authoritative there.
   local file → opt-in HEAD probe (`etag`/`last_modified`/`size` compared
   against the snapshot captured at install, cached under
   `"asset_probe_cache"`; any probe failure is conservative: never stale) →
-  nothing provided ⇒ never stale. A missing file is an install decision,
+  nothing provided ⇒ never stale. Manifest-bundled assets carry the
+  manifest's version cursor as their `version` and their per-entry `sha256`
+  is hash-enforced in the overlay path (size pre-check + sha256 staleness,
+  post-download sha256 gate) — see the manifest section below.
+  A missing file is an install decision,
   not an update. Downloads stream through the hardened transport with the
-  SHA-1 computed on the fly and install via temp-file + rename. Essential
-  assets auto-install like essential mods
-  (`AssetsController.apply_essential_assets`), and a game-folder change
-  wipes the `"assets"`/`"asset_probe_cache"` config keys alongside
-  mods/addons records.
+  SHA-1 computed on the fly and install via temp-file + rename. A
+  game-folder change wipes the `"assets"`/`"asset_probe_cache"` config keys
+  alongside mods/addons records.
 - **Data/ MPQ scanner**: `services/mpq.py` classifies every MPQ under the
   client's ``Data/`` tree for a caller-provided game version (no
   auto-detection): **stock** (per-version Blizzard archive tables —
@@ -283,29 +287,53 @@ the QLocalServer guard remains authoritative there.
   outside `ADDON_GIT_HOSTS` before opening an API connection or spawning
   `git ls-remote`.
 
+## Client update: staged orchestrator (`services/update/`)
+
+`workflow.py` is the facade — `VerifyWorker` / `UpdateWorker` keep their
+public API (constructor, `run()`, `cancel()`) and delegate each phase to
+a stage module:
+
+| Stage | Module | Briefing layer | Role |
+|---|---|---|---|
+| Ownership | `ownership.py` | guardrail | server-base vs community-overlay registry: torrent paths + manifest entries are server-owned (authoritative, win collisions with a logged warning); mod/asset `installed_files`, `dlls.txt`, `Interface/` are user-owned (server syncs refuse writes there). Network-free (cached manifest snapshot + state records). |
+| Initial | `stages_initial.py` | Server Base (Initial) | one-off acquisition: `has_playable_client()` (`has_exe` + external launchers), `fallback_available()`. No rechecks. |
+| Static | `stages_static.py` | Server Incremental (Static) | server-declared bundled entries (`manifest-` registry ids) via fixed URLs. Additions/updates only, never deletes. |
+| Manifest | `stages_manifest.py` | Server Incremental (Manifest) | overlay path split/tag (`manifest:` namespace); additions only, never deletes. |
+| Torrent | `stages_torrent.py` | Server Incremental (Torrent) | base-client folder recheck + selective download; `torrent_allowed()` policy. Ignores extra on-disk files — never deletes user content. |
+
+User/Community management (mods/addons/assets controllers + `services/sources/`
+backends) stays decoupled — it never runs inside verify/update workers.
+
 ## Client-update backends
 
 - Controllers are toolkit-agnostic: they post dataclass *events* to a shared
   `EventDispatcher` (`state/events.py`) from worker threads; they never touch
   UI code. The QML side (`ui/bridge.py`) converts events to Qt signals on the
   main thread, exposed to QML as properties by view-models.
-- Client updates are **torrent-only for incremental**
-  + single-zip HTTP fallback for first install: the active
+- Client updates are **torrent for the base client**
+  + optional **manifest overlay** + single-zip HTTP fallback for first
+  install: the active
   download source is `server.download.torrent` (`torrent_url`
   and/or `magnet` in `magnet:?xt=…`; HTTPS `.torrent` wins when
   both are set; optional `torrent.update` controls incremental —
   explicit `false` means first-time only, explicit `true` forces
   incremental, absent infers `bool(torrent_url)` so magnet-only
-  defaults to first-time-only) and `server.download.http.fallback`
-  (single `client.zip`/`rar`). Incremental updates go through
+  defaults to first-time-only — a magnet's content is immutable once
+  published (info-hash addressed, cannot be changed in place), so only
+  `torrent_url` can point at refreshed content), plus the optional
+  `server.download.manifest` overlay (server-owned files over the base
+  client, HTTPS from the manifest's own URLs, `manifest:`-prefixed stale
+  paths), and `server.download.http.fallback`
+  (single `client.zip`/`rar`). Base-client incremental updates go through
   `services/update_backend/torrent_update.py` (`TorrentVerifier` +
   `TorrentDownloader`); the piece hashes of the TLS-fetched
   `.torrent` (or magnet metadata that must hash to the configured
   btih) are the integrity guarantee. When torrent is unavailable
-  and no `WoW.exe` is present, `UpdateWorker` fetches the fallback
+  and no `WoW.exe`   is present, `UpdateWorker` fetches the fallback
   zip via HTTP and extracts per `server.download.content.type`
   (`folder`/`zip`/`rar`); incremental HTTP per-file `traverse()` no
-  longer exists.
+  longer exists (the manifest overlay is per-file HTTPS, not a
+  reintroduced traverse — it covers only manifest-listed paths).
 - The torrent root is **auto-detected** from the unique marker-file position
   in the torrent: the parent of the marker (case-insensitive) is the root
   prefix stripped from every torrent path when mapping to the selected WoW

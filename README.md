@@ -1,3 +1,16 @@
+> [!NOTE]  
+> This Project is mainly vibe coded, design decision and directions are still human controled. And audit are made to assure decent quality.
+>
+> I use it as a test ground for AI assisted developement. 
+> It was coded by a series of different models :
+> - Muse Spark 1.3
+> - GLM Series
+> - Gemini Series
+> - Minimax
+> - MiMo
+> 
+> Using multiples agentic software -> Opencode/Pi/Maki/Antigravity
+
 # Nostalgia Launcher
 
 <img src="NostalgiaLauncher.svg" alt="Nostalgia Launcher logo" align="left" width="180" /> Nostalgia Launcher keeps your game installation up to date and helps you manage mods, addons, and settings — all in one place. Your community gives you a small setup file, you pick your game folder, and the launcher takes care of the rest.
@@ -29,7 +42,7 @@ That's it — next time, just open the launcher and press Play.
 ## Everyday use
 
 - **Play** — starts your game. The button turns into Terminate while the game runs.
-- **Mods / Addons tabs** — what you see here comes from your community's setup file.
+- **Mods / Addons tabs** — each shows what's installed on your end: tick an entry and press Uninstall to remove it. To add more, use the Add button on the tab to browse what your community offers and install with one click.
 - **News tab** — empty means your community did not share a news feed.
 - **Profiles** — switch communities from the menu at the top. Each community you add gets its own profile, named after the server — manage them (add more, delete) in Settings → Profiles. Opening the same profile twice just brings the open window forward.
 - **Linux note** — on Linux you need `umu-run` installed for the Play button to appear.

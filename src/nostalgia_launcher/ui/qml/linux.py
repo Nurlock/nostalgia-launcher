@@ -6,6 +6,8 @@ field. Snapshot + callbacks come from `SettingsController` via the tab
 glue in `ui.qml.app`.
 """
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from ...services.umu import RENDERER_CHOICES
@@ -14,7 +16,7 @@ _RENDERER_LABELS = {value: label for value, label in RENDERER_CHOICES}
 _RENDERER_BY_LABEL = {label: value for value, label in RENDERER_CHOICES}
 
 
-def renderer_labels() -> list:
+def renderer_labels() -> list[str]:
     """Renderer choice labels for the combo."""
     return [label for _, label in RENDERER_CHOICES]
 
@@ -34,12 +36,12 @@ class LinuxModel(QObject):
 
     changed = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._umu_hint = ""
-        self._proton_options: list = []
+        self._proton_options: list[str] = []
         self._proton = ""
-        self._renderer_options: list = []
+        self._renderer_options: list[str] = []
         self._renderer = ""
         self._dxvk = False
         self._gamemode = False
@@ -48,16 +50,18 @@ class LinuxModel(QObject):
         self._wayland_avail = False
         self._game_id = ""
         self._umu_path = ""
-        self._snapshot_provider = None
-        self._handlers: dict = {}
+        self._snapshot_provider: Callable[[], dict[str, object]] | None = None
+        self._handlers: dict[str, Callable[..., object]] = {}
 
     # ── snapshot ──────────────────────────────────────────────────────
 
-    def set_snapshot_provider(self, provider):
+    def set_snapshot_provider(
+        self, provider: Callable[[], dict[str, object]] | None
+    ) -> None:
         self._snapshot_provider = provider
 
     @Slot()
-    def refresh(self):
+    def refresh(self) -> None:
         if self._snapshot_provider is None:
             return
         snap = self._snapshot_provider()
@@ -82,7 +86,7 @@ class LinuxModel(QObject):
 
     umuHint = Property(str, _get_umu_hint, notify=changed)
 
-    def _get_proton_options(self) -> list:
+    def _get_proton_options(self) -> list[str]:
         return list(self._proton_options)
 
     protonOptions = Property(
@@ -94,7 +98,7 @@ class LinuxModel(QObject):
 
     proton = Property(str, _get_proton, notify=changed)
 
-    def _get_renderer_options(self) -> list:
+    def _get_renderer_options(self) -> list[str]:
         return list(self._renderer_options)
 
     rendererOptions = Property(
@@ -143,10 +147,10 @@ class LinuxModel(QObject):
 
     # ── actions ───────────────────────────────────────────────────────
 
-    def set_handlers(self, **handlers):
+    def set_handlers(self, **handlers: Callable[..., object]) -> None:
         self._handlers = dict(handlers)
 
-    def _call(self, name, *args):
+    def _call(self, name: str, *args: object) -> None:
         handler = self._handlers.get(name)
         if handler is None:
             return
@@ -154,29 +158,29 @@ class LinuxModel(QObject):
         self.refresh()
 
     @Slot(str)
-    def applyProton(self, value: str):
+    def applyProton(self, value: str) -> None:
         self._call("proton", value)
 
     @Slot(str)
-    def applyRenderer(self, label: str):
+    def applyRenderer(self, label: str) -> None:
         self._call("renderer", renderer_value(label))
 
     @Slot(bool)
-    def setDxvk(self, enabled: bool):
+    def setDxvk(self, enabled: bool) -> None:
         self._call("dxvk", bool(enabled))
 
     @Slot(bool)
-    def setGamemode(self, enabled: bool):
+    def setGamemode(self, enabled: bool) -> None:
         self._call("gamemode", bool(enabled))
 
     @Slot(bool)
-    def setWayland(self, enabled: bool):
+    def setWayland(self, enabled: bool) -> None:
         self._call("wayland", bool(enabled))
 
     @Slot(str)
-    def applyGameId(self, value: str):
+    def applyGameId(self, value: str) -> None:
         self._call("game_id", value)
 
     @Slot(str)
-    def applyUmuPath(self, value: str):
+    def applyUmuPath(self, value: str) -> None:
         self._call("umu_path", value)

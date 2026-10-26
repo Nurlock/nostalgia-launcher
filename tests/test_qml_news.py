@@ -22,7 +22,6 @@ from PySide6.QtWidgets import QApplication
 
 from nostalgia_launcher.state.events import NewsLoaded
 from nostalgia_launcher.state.models import NewsResult
-from nostalgia_launcher.ui.qml.addons import AddonsModel
 from nostalgia_launcher.ui.qml.app import qml_dir
 from nostalgia_launcher.ui.qml.content import ContentListModel
 from nostalgia_launcher.ui.qml.custom import (
@@ -36,7 +35,7 @@ from nostalgia_launcher.ui.qml.viewmodels import (
     LauncherState,
     NewsFeedModel,
     ThemeBridge,
-    UpdateState,
+    UpdateViewState,
 )
 from nostalgia_launcher.ui.qml.wizard import WizardModel
 from nostalgia_launcher.ui.theme import Palette
@@ -80,7 +79,7 @@ def engine(qapp):
     state = LauncherState()
     theme = ThemeBridge(Palette())
     news = NewsFeedModel()
-    update = UpdateState()
+    update = UpdateViewState()
     eng = QQmlApplicationEngine()
     eng.rootContext().setContextProperty("launcherState", state)
     eng.rootContext().setContextProperty("appTheme", theme)
@@ -91,7 +90,9 @@ def engine(qapp):
     eng.rootContext().setContextProperty(
         "assetsModel", ContentListModel("assets empty")
     )
-    eng.rootContext().setContextProperty("addonsModel", AddonsModel())
+    eng.rootContext().setContextProperty(
+        "addonsModel", ContentListModel("addons empty")
+    )
     eng.rootContext().setContextProperty("settingsModel", SettingsModel())
     eng.rootContext().setContextProperty("logModel", LogModel())
     eng.rootContext().setContextProperty("wizard", WizardModel())
@@ -155,6 +156,19 @@ def test_failed_flags_unloadable(model):
     assert model.property("failed") is True  # empty feed gets the fallback
     model.set_snapshot(ITEMS)
     assert model.property("failed") is False
+
+
+def test_configured_defaults_true(model):
+    assert model.property("configured") is True
+
+
+def test_unconfigured_hides_404_but_keeps_fallback(model):
+    model.set_snapshot(None, configured=False)
+    assert model.property("configured") is False
+    assert model.property("failed") is True  # logo + Play still show
+    assert model.property("statusText") == "News feed not configured."
+    model.set_snapshot(ITEMS)
+    assert model.property("configured") is True
 
 
 def test_on_event_items(model):
@@ -233,11 +247,30 @@ def test_failed_snapshot_shows_play_fallback(engine, qapp):
     root = eng.rootObjects()[0]
     play = root.findChild(QObject, "qmlNewsPlay")
     news_list = root.findChild(QObject, "qmlNewsList")
+    code = root.findChild(QObject, "qmlNewsFallbackCode")
+    fallback_status = root.findChild(QObject, "qmlNewsFallbackStatus")
     news.set_snapshot(None, error="Couldn't reach the news feed.")
     qapp.processEvents()
     assert play.property("visible") is True
     assert news_list.property("visible") is False
+    assert code.property("visible") is True
+    assert fallback_status.property("visible") is True
     news.set_snapshot(ITEMS)
     qapp.processEvents()
     assert play.property("visible") is False
     assert news_list.property("visible") is True
+
+
+def test_unconfigured_snapshot_hides_404_keeps_play(engine, qapp):
+    eng, news = engine
+    root = eng.rootObjects()[0]
+    play = root.findChild(QObject, "qmlNewsPlay")
+    news_list = root.findChild(QObject, "qmlNewsList")
+    code = root.findChild(QObject, "qmlNewsFallbackCode")
+    fallback_status = root.findChild(QObject, "qmlNewsFallbackStatus")
+    news.set_snapshot(None, configured=False)
+    qapp.processEvents()
+    assert play.property("visible") is True
+    assert news_list.property("visible") is False
+    assert code.property("visible") is False
+    assert fallback_status.property("visible") is False

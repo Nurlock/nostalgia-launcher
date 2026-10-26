@@ -90,20 +90,6 @@ class SettingsController:
         # Detect first run before anything writes the config. Read through
         # the store (not constants) so a per-profile state file counts.
         self.state.first_run = not os.path.exists(config_store.config_file)
-        # On first run Settings auto-opens with no folder selected — the
-        # user must confirm one before anything is downloaded or written.
-        # If they close it without adding a Defender exclusion, recommend
-        # the exclusion once on close.
-        self.state.first_run_av_pending = (
-            self.state.first_run and platform_support.can_manage_antivirus()
-        )
-        # On first run we don't verify (fetch the torrent snapshot /
-        # touch Config.wtf) until the user closes Settings AND has a
-        # confirmed folder — nothing touches disk before that. A folder
-        # change supersedes this (it verifies the new folder right away).
-        self.state.first_run_verify_pending = (
-            self.state.first_run and self.client_update_enabled
-        )
 
         # Download-source reachability, as reported by the last
         # check_source() ({name: "" | "checking…" | "online" |
@@ -196,26 +182,11 @@ class SettingsController:
         )
 
         # This verify covers the new folder — overwrite its Config.wtf with
-        # our defaults + realmList. It also supersedes the first-run
-        # settings-close verify.
-        self.state.first_run_verify_pending = False
+        # our defaults + realmList.
         if self.client_update_enabled:
             self._updater.start_verify(overwrite_config=True)
 
-        # A deliberate folder change already covers the antivirus
-        # recommendation, so the first-run settings-close shouldn't ask again.
-        self.state.first_run_av_pending = False
         return True
-
-    def should_prompt_av(self) -> bool:
-        """Whether the Defender-exclusion prompt should be shown (Windows
-        only — the messagebox itself lives in the UI layer)."""
-        return platform_support.can_manage_antivirus()
-
-    def av_prompt_dismissed(self):
-        """Called when the AV prompt was answered or skipped; clears the
-        first-run pending flag so the settings-close doesn't ask again."""
-        self.state.first_run_av_pending = False
 
     def allow_through_antivirus(self):
         """Add a Windows Defender exclusion for the game folder (asks for
@@ -229,9 +200,6 @@ class SettingsController:
                 )
             )
             return
-        # The user handled the exclusion themselves — no need to prompt again
-        # when the first-run Settings window closes.
-        self.state.first_run_av_pending = False
         client_dir = os.path.normpath(self.state.path.strip())
         if not client_dir or client_dir == ".":
             return
@@ -379,13 +347,11 @@ class SettingsController:
         return self.state.config
 
     def set_client_update_enabled(self, enabled: bool) -> dict:
-        """Persist the client-update switch and update first-run scheduling."""
+        """Persist the client-update switch."""
         enabled = bool(enabled)
         self.state.config = config_store.update_config(
             lambda c: c.__setitem__("client_update_enabled", enabled)
         )
-        if self.state.first_run:
-            self.state.first_run_verify_pending = enabled
         return self.state.config
 
     # ── community default catalogs ───────────────────────────────────────

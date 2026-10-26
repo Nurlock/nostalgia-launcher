@@ -1,13 +1,13 @@
-// Shared MODS/ASSETS list (Phase 5):
-// banner (title + search + All/Installed/Updates chips + reload), rows
-// (checkbox, ★, name/version, retry/update action, repo link, description,
-// error), empty state, ★-install/Apply footer. Instantiated per tab with a
-// `contentModel` (ui/qml/content.py:ContentListModel) plus tab wording.
+// Shared ADDONS/MODS/ASSETS manage list: banner (title + search +
+// reload), rows (checkbox, name, repo link, description), empty state,
+// Uninstall footer. Instantiated per tab with a `contentModel`
+// (ui/qml/content.py:ContentListModel) plus tab wording.
+
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import QtQuick.Dialogs
 import QtQuick.Layouts
 
 ColumnLayout {
@@ -18,10 +18,7 @@ ColumnLayout {
     property var contentModel
     property string tabTitle: ""
     property string legendText: ""
-    property string essentialText: ""
-    property string customLabel: ""
     property string loadingText: "Loading…"
-    signal customRequested()
 
     ToolBar {
         Layout.fillWidth: true
@@ -32,7 +29,7 @@ ColumnLayout {
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 12
-            spacing: 4
+            spacing: 2
             RowLayout {
                 Layout.fillWidth: true
                 Label {
@@ -60,25 +57,29 @@ ColumnLayout {
             }
             RowLayout {
                 Layout.fillWidth: true
+                Layout.topMargin: 0
+                Layout.bottomMargin: 2
+                spacing: 8
                 TextField {
                     objectName: "qmlContentSearch"
                     Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    Layout.alignment: Qt.AlignVCenter
+                    topPadding: 4
+                    bottomPadding: 4
+                    font.pointSize: 9
                     placeholderText: "⌕  Filter"
                     Accessible.name: "Filter entries"
                     onTextChanged: root.contentModel.setFilterText(text)
                 }
                 Button {
                     objectName: "qmlContentBrowseMore"
+                    Layout.preferredHeight: 36
+                    Layout.alignment: Qt.AlignVCenter
+                    topPadding: 4
+                    bottomPadding: 4
                     text: "Add " + root.tabTitle.toLowerCase()
                     onClicked: root.contentModel.requestBrowse()
-                }
-                Button {
-                    objectName: "qmlContentUpdatesOnly"
-                    text: "Updates only"
-                    checkable: true
-                    checked: root.contentModel.filterMode === "updates"
-                    flat: true
-                    onClicked: root.contentModel.setFilterMode(checked ? "updates" : "all")
                 }
             }
         }
@@ -96,11 +97,11 @@ ColumnLayout {
         Layout.rightMargin: 16
         Layout.topMargin: 12
         spacing: 8
-        visible: !root.contentModel.scanning && root.contentModel.emptyVisible
+        visible: root.contentModel ? (!root.contentModel.scanning && root.contentModel.emptyVisible) : false
         Label {
             objectName: "qmlContentEmpty"
             Layout.fillWidth: true
-            text: root.contentModel.emptyText
+            text: root.contentModel ? root.contentModel.emptyText : ""
             font.pointSize: 10
             color: appTheme.colors["C_TEXT_DIM"]
             wrapMode: Text.WordWrap
@@ -117,7 +118,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.topMargin: 32
         spacing: 12
-        visible: root.contentModel.scanning
+        visible: root.contentModel ? root.contentModel.scanning : false
         BusyIndicator {
             Layout.alignment: Qt.AlignHCenter
             running: parent.visible
@@ -137,18 +138,13 @@ ColumnLayout {
         Layout.fillHeight: true
         clip: true
         model: root.contentModel
-        header: ExtraBlock {
-            objectName: "qmlExtrasTop"
-            showHeadline: true
-            visible: root.contentModel.extrasOnTop && (root.contentModel.extraHeadline !== "" || root.contentModel.extraSections.length > 0)
-        }
-        footer: ExtraBlock {
-            objectName: "qmlExtrasBottom"
-            showHeadline: false
-            visible: !root.contentModel.extrasOnTop && root.contentModel.extraSections.length > 0
+        ScrollBar.vertical: ScrollBar {
+            objectName: "qmlContentScrollBar"
         }
         delegate: ColumnLayout {
-            width: entryList.width
+            id: entryDelegate
+            required property var model
+            width: ListView.view.width
             spacing: 2
             RowLayout {
                 Layout.fillWidth: true
@@ -156,79 +152,73 @@ ColumnLayout {
                 Layout.rightMargin: 12
                 spacing: 4
                 CheckBox {
-                    Accessible.name: "Enable " + model.name
-                    checked: model.enabled
-                    onCheckedChanged: root.contentModel.toggleEntry(model.eid, checked)
+                    Accessible.name: "Uninstall " + entryDelegate.model.name
+                    checked: entryDelegate.model.enabled
+                    enabled: !(entryDelegate.model.serverManaged || false)
+                    onCheckedChanged: root.contentModel.toggleEntry(entryDelegate.model.eid, checked)
                 }
                 Label {
                     text: "●"
                     font.pointSize: 8
                     color: appTheme.colors["C_GOLD"]
-                    visible: model.staged || false
-                    Accessible.name: "Unapplied change for " + model.name
+                    visible: (entryDelegate.model.staged || false) && !(entryDelegate.model.serverManaged || false)
+                    Accessible.name: "Marked for uninstall: " + entryDelegate.model.name
                 }
                 Label {
-                    text: "★"
-                    font.pointSize: 11
+                    text: "SERVER"
+                    font.pointSize: 8
+                    font.bold: true
                     color: appTheme.colors["C_GOLD"]
-                    visible: model.required
+                    visible: entryDelegate.model.serverManaged || false
+                    Accessible.name: "Server-managed entry for " + entryDelegate.model.name
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: model.name + "  " + model.version
+                    text: entryDelegate.model.name
                     font.bold: true
                     font.pointSize: 11
-                    color: model.error !== "" ? appTheme.colors["C_ERR"] : (model.installed ? appTheme.colors["C_MOD_HL"] : appTheme.colors["C_TEXT"])
+                    color: (entryDelegate.model.needsUpdate || false) ? appTheme.colors["C_GOLD"] : appTheme.colors["C_TEXT"]
                     elide: Text.ElideRight
                 }
                 Button {
-                    text: model.action === "retry" ? "Retry" : "Update"
-                    visible: model.action !== "" && model.error === ""
-                    enabled: !root.contentModel.busy
+                    objectName: "qmlContentUpdateOne"
+                    text: "↑"
+                    Accessible.name: "Update " + entryDelegate.model.name
+                    ToolTip.text: "Update " + entryDelegate.model.name
+                    ToolTip.visible: hovered
+                    visible: (entryDelegate.model.needsUpdate || false) && !(entryDelegate.model.serverManaged || false)
+                    enabled: root.contentModel ? !root.contentModel.busy : true
                     flat: true
-                    onClicked: root.contentModel.actOn(model.eid)
+                    contentItem: Text {
+                        text: "↑"
+                        font.bold: true
+                        font.pointSize: 15
+                        color: appTheme.colors["C_GOLD"]
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: if (root.contentModel) root.contentModel.updateOne(entryDelegate.model.eid)
                 }
                 Button {
                     text: "⧉"
                     font.pointSize: 15
-                    Accessible.name: "Open repository for " + model.name
+                    Accessible.name: "Open repository for " + entryDelegate.model.name
                     ToolTip.text: "Open repository in browser"
                     ToolTip.visible: hovered
-                    visible: model.repoUrl !== ""
+                    visible: entryDelegate.model.repoUrl !== ""
                     flat: true
-                    onClicked: Qt.openUrlExternally(model.repoUrl)
+                    onClicked: Qt.openUrlExternally(entryDelegate.model.repoUrl)
                 }
             }
             Label {
                 Layout.fillWidth: true
                 Layout.leftMargin: 48
                 Layout.rightMargin: 12
-                text: model.description
+                text: entryDelegate.model.description
                 font.pointSize: 10
-                color: model.enabled ? appTheme.colors["C_TEXT"] : appTheme.colors["C_TEXT_DIM"]
+                color: appTheme.colors["C_TEXT_DIM"]
                 wrapMode: Text.WordWrap
-                visible: model.description !== ""
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.leftMargin: 48
-                Layout.rightMargin: 12
-                spacing: 8
-                visible: model.error !== ""
-                Label {
-                    Layout.fillWidth: true
-                    text: model.error
-                    font.pointSize: 9
-                    color: appTheme.colors["C_ERR"]
-                    wrapMode: Text.WordWrap
-                }
-                Button {
-                    text: model.action === "retry" ? "Retry" : "Update"
-                    visible: model.action !== ""
-                    enabled: !root.contentModel.busy
-                    flat: true
-                    onClicked: root.contentModel.actOn(model.eid)
-                }
+                visible: entryDelegate.model.description !== ""
             }
             Rectangle {
                 Layout.fillWidth: true
@@ -236,73 +226,6 @@ ColumnLayout {
                 Layout.bottomMargin: 3
                 Layout.preferredHeight: 1
                 color: appTheme.colors["C_DIVIDER"]
-            }
-        }
-    }
-
-    MessageDialog {
-        id: extraConfirm
-        title: "Remove file"
-        text: root.contentModel.extraConfirmText
-        buttons: MessageDialog.Yes | MessageDialog.No
-        visible: root.contentModel.extraConfirmText !== ""
-        onAccepted: root.contentModel.confirmExtra()
-        onRejected: root.contentModel.cancelExtra()
-    }
-
-    // Extra sections: Data/ scan block (assets, top) or detected-DLL
-    // block (mods, bottom). Instantiated as the list header/footer.
-    component ExtraBlock: ColumnLayout {
-        property bool showHeadline: false
-        spacing: 2
-        Label {
-            objectName: "qmlExtrasHeadline"
-            Layout.fillWidth: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
-            Layout.topMargin: 6
-            visible: showHeadline && root.contentModel.extraHeadline !== ""
-            text: root.contentModel.extraHeadline
-            font.pointSize: 9
-            color: appTheme.colors["C_TEXT_DIM"]
-            wrapMode: Text.WordWrap
-        }
-        Repeater {
-            model: root.contentModel.extraSections
-            ColumnLayout {
-                width: parent.width
-                spacing: 2
-                property string sectionTitle: (modelData && modelData.title) || ""
-                Label {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 16
-                    Layout.topMargin: 10
-                    text: (modelData && modelData.title) || ""
-                    font.bold: true
-                    color: modelData.color === "err" ? appTheme.colors["C_ERR"] : (modelData.color === "gold" ? appTheme.colors["C_GOLD"] : appTheme.colors["C_TEXT_DIM"])
-                }
-                Repeater {
-                    model: modelData.rows
-                    RowLayout {
-                        width: parent.width
-                        Layout.leftMargin: 16
-                        Layout.rightMargin: 12
-                        spacing: 8
-                        Label {
-                            Layout.fillWidth: true
-                            text: (modelData && modelData.name || "") + ((modelData && modelData.meta) ? "  ·  " + modelData.meta : "")
-                            font.pointSize: 9
-                            color: modelData.action !== "" ? appTheme.colors["C_ERR"] : appTheme.colors["C_TEXT"]
-                            elide: Text.ElideMiddle
-                        }
-                        Button {
-                            text: modelData.action
-                            visible: modelData.action !== ""
-                            flat: true
-                            onClicked: root.contentModel.requestExtra(sectionTitle, modelData.name)
-                        }
-                    }
-                }
             }
         }
     }
@@ -317,21 +240,27 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: 16
         Layout.rightMargin: 16
-        Layout.topMargin: 6
-        Layout.bottomMargin: 10
+        Layout.topMargin: 2
+        Layout.bottomMargin: 4
         spacing: 8
         Button {
-            objectName: "qmlContentEssential"
-            text: root.essentialText
-            enabled: root.contentModel.essentialEnabled
-            onClicked: root.contentModel.installEssential()
+            objectName: "qmlContentUpdate"
+            text: root.contentModel ? (root.contentModel.busy && root.contentModel.busyAction === "update" ? "Updating…" : (root.contentModel.updatesCount > 0 ? "Update (" + root.contentModel.updatesCount + ")" : "Update")) : "Update"
+            visible: root.contentModel ? (root.contentModel.updatesCount > 0) : false
+            enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.updatesCount > 0) : false
+            highlighted: true
+            topPadding: 2
+            bottomPadding: 2
+            onClicked: if (root.contentModel) root.contentModel.updateAll()
         }
         Button {
             objectName: "qmlContentApply"
-            text: root.contentModel.busy ? "Applying…" : (root.contentModel.pendingCount > 0 ? "Apply (" + root.contentModel.pendingCount + ")" : "Apply")
-            enabled: !root.contentModel.busy && root.contentModel.applyVisible
-            highlighted: true
-            onClicked: root.contentModel.applyAll()
+            text: root.contentModel ? (root.contentModel.busy && root.contentModel.busyAction !== "update" ? "Uninstalling…" : (root.contentModel.pendingCount > 0 ? "Uninstall (" + root.contentModel.pendingCount + ")" : "Uninstall")) : "Uninstall"
+            enabled: root.contentModel ? (!root.contentModel.busy && root.contentModel.pendingCount > 0) : false
+            highlighted: root.contentModel ? (root.contentModel.pendingCount > 0 && root.contentModel.updatesCount === 0) : false
+            topPadding: 2
+            bottomPadding: 2
+            onClicked: if (root.contentModel) root.contentModel.applyAll()
         }
         Item { Layout.fillWidth: true }
     }

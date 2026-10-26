@@ -15,6 +15,7 @@ from filelock import FileLock
 from filelock import Timeout as FileLockTimeout
 
 _LOCK: FileLock | None = None
+_ATEXIT_REGISTERED = False
 _GRACE_STEP_S = 0.25
 _GRACE_STEPS = 12
 
@@ -33,7 +34,7 @@ def lock_file_for(state_path: str) -> str:
 
 
 def _acquire(path: str, timeout: float) -> None:
-    global _LOCK
+    global _LOCK, _ATEXIT_REGISTERED
     if _LOCK is not None and _LOCK.is_locked:
         return
     if _LOCK is not None:
@@ -47,7 +48,9 @@ def _acquire(path: str, timeout: float) -> None:
             f"another instance holds this profile's store ({path}): {e}"
         ) from e
     _LOCK = lock
-    atexit.register(release_store_lock)
+    if not _ATEXIT_REGISTERED:
+        atexit.register(release_store_lock)
+        _ATEXIT_REGISTERED = True
 
 
 def acquire_store_lock(state_path: str) -> None:

@@ -24,9 +24,9 @@ def test_validate_asset_minimal():
     assert a is not None
     assert a["id"] == "patch3"
     assert a["dest"] == "Data/patch-3.MPQ"
-    assert a["essential"] is False
     assert a["sha1"] is None and a["size"] is None
     assert a["version"] is None and a["probe"] is False
+    assert "essential" not in a
 
 
 def test_validate_asset_full_metadata():
@@ -35,7 +35,6 @@ def test_validate_asset_full_metadata():
             sha1="A" * 40,  # upper-case accepted, normalized
             size=123,
             version="2026-08-01",
-            essential=True,
             probe=True,
         )
     )
@@ -73,6 +72,32 @@ def test_merge_assets_custom_overrides_remote_by_id():
     assert len(merged) == 1
     assert merged[0]["version"] == "2"
     assert merged[0]["size"] == 7
+
+
+def test_dedupe_assets_by_dest_server_wins():
+    from nostalgia_launcher.services.catalog import dedupe_assets_by_dest
+
+    shadow = {"id": "patch-a", "dest": "Data/patch-A.MPQ"}
+    server = {"id": "manifest-data-patch-a-mpq", "dest": "Data/patch-A.MPQ"}
+    other = {"id": "other", "dest": "Data/other.MPQ"}
+    # Shadow first, server second — server still wins, one row survives.
+    assert [
+        r["id"] for r in dedupe_assets_by_dest([shadow, server, other])
+    ] == [
+        "manifest-data-patch-a-mpq",
+        "other",
+    ]
+    # Server first — shadow dropped outright.
+    assert [r["id"] for r in dedupe_assets_by_dest([server, shadow])] == [
+        "manifest-data-patch-a-mpq"
+    ]
+    # Case-insensitive dest match.
+    assert dedupe_assets_by_dest(
+        [dict(shadow, dest="data/PATCH-a.mpq"), server]
+    ) == [server]
+    # Distinct dests untouched; empty in → empty out.
+    assert dedupe_assets_by_dest([shadow, other]) == [shadow, other]
+    assert dedupe_assets_by_dest([]) == []
 
 
 # ── launcher config parsing ──────────────────────────────────────────────

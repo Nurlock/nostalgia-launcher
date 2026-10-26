@@ -111,7 +111,6 @@ def test_validate_mod_github_release():
         {
             "id": "ExampleLoader",
             "name": "ExampleLoader",
-            "installation": "required",
             "repo_url": "https://github.com/hannesmann/example-loader",
             "source": {
                 "kind": "github_release",
@@ -129,7 +128,6 @@ def test_validate_mod_github_release():
     assert cleaned["source"]["kind"] == "github_release"
     assert cleaned["source"]["owner"] == "hannesmann"
     assert cleaned["register_dll"] == ["VfPatcher.dll"]
-    assert cleaned["installation"] == "required"
     assert cleaned["type"] == "mod"
 
 
@@ -242,7 +240,9 @@ def test_validate_mod_rejects_bad_repo_url():
 def test_merge_addons_custom_overrides_and_appends():
     remote = [
         {
+            "id": "a",
             "name": "A",
+            "folder": "A",
             "git": "https://github.com/x/A",
             "branch": None,
             "ref": None,
@@ -252,7 +252,9 @@ def test_merge_addons_custom_overrides_and_appends():
             "blocked": False,
         },
         {
+            "id": "b",
             "name": "B",
+            "folder": "B",
             "git": "https://github.com/x/B",
             "branch": None,
             "ref": None,
@@ -263,14 +265,49 @@ def test_merge_addons_custom_overrides_and_appends():
         },
     ]
     custom = [
-        {"name": "A", "git": "https://github.com/fork/A", "recommended": True},
-        {"name": "C", "git": "https://github.com/x/C"},
+        {
+            "id": "a",
+            "name": "A",
+            "folder": "A",
+            "git": "https://github.com/fork/A",
+            "recommended": True,
+        },
+        {
+            "id": "c",
+            "name": "C",
+            "folder": "C",
+            "git": "https://github.com/x/C",
+        },
     ]
-    merged = {a["name"]: a for a in catalog.merge_addons(remote, custom)}
-    assert merged["A"]["git"] == "https://github.com/fork/A"
-    assert merged["A"]["recommended"] is True
-    assert merged["B"]["git"] == "https://github.com/x/B"
-    assert merged["C"]["git"] == "https://github.com/x/C"
+    merged = {a["id"]: a for a in catalog.merge_addons(remote, custom)}
+    assert merged["a"]["git"] == "https://github.com/fork/A"
+    assert merged["a"]["recommended"] is True
+    assert merged["b"]["git"] == "https://github.com/x/B"
+    assert merged["c"]["git"] == "https://github.com/x/C"
+
+
+def test_merge_addons_variant_group_shares_folder():
+    """Same folder + different ids = variant group: both rows survive,
+    install = replace (last-write wins on disk, no merge)."""
+    remote = [
+        {
+            "id": "pfquest",
+            "name": "pfQuest",
+            "folder": "pfQuest",
+            "git": "https://github.com/shagu/pfQuest",
+        },
+    ]
+    custom = [
+        {
+            "id": "pfquest-classicapi",
+            "name": "pfQuest (ClassicAPI)",
+            "folder": "pfQuest",
+            "git": "https://github.com/brues-code/pfQuest",
+        },
+    ]
+    merged = catalog.merge_addons(remote, custom)
+    assert {a["id"] for a in merged} == {"pfquest", "pfquest-classicapi"}
+    assert all(a["folder"] == "pfQuest" for a in merged)
 
 
 # ── registry URL storage ─────────────────────────────────────────────────────
@@ -395,7 +432,7 @@ def test_validate_entries_skips_invalid_with_log():
 # ── mod type / installation / multi-dll schema ──────────────────────────────
 
 
-def test_validate_mod_defaults_type_and_installation():
+def test_validate_mod_defaults_type():
     cleaned = catalog.validate_mod(
         {
             "id": "X",
@@ -407,10 +444,11 @@ def test_validate_mod_defaults_type_and_installation():
         }
     )
     assert cleaned["type"] == "mod"
-    assert cleaned["installation"] == "user_opt_in"
+    # No install-policy field: every mod is user opt-in.
+    assert "installation" not in cleaned
 
 
-def test_validate_mod_installation_field_honored():
+def test_validate_mod_ignores_legacy_policy_fields():
     base = {
         "id": "X",
         "source": {
@@ -419,22 +457,15 @@ def test_validate_mod_installation_field_honored():
             "dest": "x.dll",
         },
     }
-    # The "installation" field is honored.
+    # Legacy policy fields are dropped, not honored.
     assert (
-        catalog.validate_mod({**base, "installation": "required"})[
-            "installation"
-        ]
-        == "required"
+        catalog.validate_mod({**base, "installation": "required"})["type"]
+        == "mod"
     )
-    # The legacy "essential" boolean is no longer honored; it falls back
-    # to the "user_opt_in" default.
-    assert (
-        catalog.validate_mod({**base, "essential": True})["installation"]
-        == "user_opt_in"
-    )
+    assert catalog.validate_mod({**base, "essential": True})["type"] == "mod"
 
 
-def test_validate_mod_rejects_unknown_type_and_installation():
+def test_validate_mod_rejects_unknown_type():
     base = {
         "id": "X",
         "source": {
@@ -444,7 +475,6 @@ def test_validate_mod_rejects_unknown_type_and_installation():
         },
     }
     assert catalog.validate_mod({**base, "type": "loader"}) is None
-    assert catalog.validate_mod({**base, "installation": "mandatory"}) is None
 
 
 def test_validate_mod_external_launcher_fields():

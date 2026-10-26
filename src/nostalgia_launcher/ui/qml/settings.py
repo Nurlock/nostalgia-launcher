@@ -198,7 +198,7 @@ class SettingsModel(QObject):
     switchPrompt = Property(str, _get_switch_prompt, notify=transientChanged)
 
     @Slot(bool)
-    def setLogsOpen(self, open_: bool):
+    def setLogsOpen(self, open_: bool) -> None:
         open_ = bool(open_)
         if open_ != self._logs_open:
             self._logs_open = open_
@@ -208,149 +208,149 @@ class SettingsModel(QObject):
 
     # ── actions ───────────────────────────────────────────────────────
 
-    def set_handlers(self, **handlers):
+    def set_handlers(self, **handlers) -> None:
         self._handlers = dict(handlers)
 
-    def _call(self, name, *args):
+    def _call(self, name: str, *args):
         handler = self._handlers.get(name)
         if handler is None:
             return None
         return handler(*args)
 
     @Slot()
-    def openClientFolder(self):
+    def openClientFolder(self) -> None:
         self._call("open_folder")
 
     @Slot(str)
-    def setGameFolder(self, path: str):
+    def setGameFolder(self, path: str) -> None:
         if self._call("set_path", path):
             self.refresh()
 
     @Slot()
-    def checkSources(self):
+    def checkSources(self) -> None:
         self._call("check_sources")
 
     @Slot()
-    def verifyFiles(self):
+    def verifyFiles(self) -> None:
         self._call("verify")
 
     @Slot()
-    def allowAntivirus(self):
+    def allowAntivirus(self) -> None:
         self._call("antivirus")
 
     @Slot(bool)
-    def setClearWdb(self, enabled: bool):
+    def setClearWdb(self, enabled: bool) -> None:
         self._call("clear_wdb", bool(enabled))
         self.refresh()
 
     @Slot(bool)
-    def setCloseOnLaunch(self, enabled: bool):
+    def setCloseOnLaunch(self, enabled: bool) -> None:
         self._call("close_on_launch", bool(enabled))
         self.refresh()
 
     @Slot(bool)
-    def setClientUpdates(self, enabled: bool):
+    def setClientUpdates(self, enabled: bool) -> None:
         self._call("client_updates", bool(enabled))
         self.refresh()
 
     @Slot(bool)
-    def setAddonsDefault(self, enabled: bool):
+    def setAddonsDefault(self, enabled: bool) -> None:
         self._call("addons_default", bool(enabled))
         self.refresh()
 
     @Slot(bool)
-    def setModsDefault(self, enabled: bool):
+    def setModsDefault(self, enabled: bool) -> None:
         self._call("mods_default", bool(enabled))
         self.refresh()
 
     @Slot(str)
-    def applyAddonsUrl(self, url: str):
+    def applyAddonsUrl(self, url: str) -> None:
         err = self._call("set_addons_url", url)
         self._registry_status = f"✗ {err}" if err else ""
         self.transientChanged.emit()
         self.refresh()
 
     @Slot(str)
-    def applyModsUrl(self, url: str):
+    def applyModsUrl(self, url: str) -> None:
         err = self._call("set_mods_url", url)
         self._registry_status = f"✗ {err}" if err else ""
         self.transientChanged.emit()
         self.refresh()
 
     @Slot()
-    def resetAddonsUrl(self):
+    def resetAddonsUrl(self) -> None:
         self._call("reset_addons_url")
         self._registry_status = ""
         self.transientChanged.emit()
         self.refresh()
 
     @Slot()
-    def resetModsUrl(self):
+    def resetModsUrl(self) -> None:
         self._call("reset_mods_url")
         self._registry_status = ""
         self.transientChanged.emit()
         self.refresh()
 
     @Slot()
-    def reloadAddons(self):
+    def reloadAddons(self) -> None:
         self._call("reload_addons")
 
     @Slot()
-    def reloadMods(self):
+    def reloadMods(self) -> None:
         self._call("reload_mods")
 
     @Slot()
-    def openAddonsCustom(self):
+    def openAddonsCustom(self) -> None:
         self._call("open_addons_custom")
 
     @Slot()
-    def openModsCustom(self):
+    def openModsCustom(self) -> None:
         self._call("open_mods_custom")
 
     @Slot()
-    def clearAddonsCustom(self):
+    def clearAddonsCustom(self) -> None:
         self._call("clear_addons_custom")
 
     @Slot()
-    def clearModsCustom(self):
+    def clearModsCustom(self) -> None:
         self._call("clear_mods_custom")
 
     @Slot(str)
-    def deleteProfile(self, name: str):
+    def deleteProfile(self, name: str) -> None:
         err = self._call("delete_profile", name)
         self._profiles_status = f"✗ {err}" if err else ""
         self.transientChanged.emit()
         self.refresh()
 
     @Slot(str)
-    def requestSwitch(self, name: str):
+    def requestSwitch(self, name: str) -> None:
         """Header combo pick: confirm, then restart into the profile."""
         if name and name != self._active_profile:
             self.prompt_switch(name)
 
     @Slot()
-    def requestLogs(self):
+    def requestLogs(self) -> None:
         self.logsRequested.emit()
 
     @Slot()
-    def requestLinux(self):
+    def requestLinux(self) -> None:
         self.linuxRequested.emit()
 
     @Slot()
-    def finishImport(self):
+    def finishImport(self) -> None:
         self._call("finish_import")
 
     @Slot(bool)
-    def resolveSwitch(self, yes: bool):
+    def resolveSwitch(self, yes: bool) -> None:
         self._call("resolve_switch", bool(yes))
         self.clear_switch_prompt()
 
-    def prompt_switch(self, target: str):
+    def prompt_switch(self, target: str) -> None:
         """Ask whether to restart on a freshly imported profile."""
         self._switch_prompt = target
         self.transientChanged.emit()
 
-    def clear_switch_prompt(self):
+    def clear_switch_prompt(self) -> None:
         self._switch_prompt = ""
         self.transientChanged.emit()
 
@@ -360,7 +360,7 @@ class LogModel(QObject):
 
     changed = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._lines: list = []
         self._flush_queued = False
@@ -371,7 +371,7 @@ class LogModel(QObject):
     lines = Property("QStringList", _get_lines, notify=changed)
 
     @Slot()
-    def refresh(self):
+    def refresh(self) -> None:
         """Reload the retained session log (old rotation first)."""
         try:
             self._lines = [
@@ -384,7 +384,7 @@ class LogModel(QObject):
         self.changed.emit()
 
     @Slot(str, str)
-    def appendLine(self, text: str, _tag: str):
+    def appendLine(self, text: str, _tag: str) -> None:
         """Live tail while the viewer is open (`bridge.logMessage`)."""
         # The ListView delegate is a fixed-width Label: overlong lines
         # (URLs, shas) would paint past the scrollbar, so cap the length.
@@ -392,8 +392,6 @@ class LogModel(QObject):
         if len(text) > 300:
             text = text[:300] + "…"
         self._lines.append(text)
-        if len(self._lines) > 2000:
-            del self._lines[: len(self._lines) - 2000]
         if len(self._lines) > 2000:
             del self._lines[: len(self._lines) - 2000]
         # ponytail: one emit per burst, not per line — the QStringList
@@ -404,6 +402,7 @@ class LogModel(QObject):
         self._flush_queued = True
         QTimer.singleShot(200, self._flush)
 
-    def _flush(self):
+    @Slot()
+    def _flush(self) -> None:
         self._flush_queued = False
         self.changed.emit()

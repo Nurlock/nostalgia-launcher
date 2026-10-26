@@ -5,6 +5,8 @@
 // window so it can be watched while interacting with the app). Hosts
 // the Linux (UMU) dialog and the profile-import wizard (Phase 6b).
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -16,10 +18,16 @@ Dialog {
     objectName: "qmlSettingsDialog"
     title: "Settings"
     modal: true
-    // Fill the window: a four-tab working surface, not a confirmation.
-    width: parent.width
-    height: parent.height
+    // Fill 95% of the mother window; the tab container fills the dialog.
+    // No footer (the header ✕ closes).
+    width: parent.width * 0.95
+    height: parent.height * 0.95
     anchors.centerIn: parent
+    padding: 0
+    topPadding: 0
+    bottomPadding: 0
+    leftPadding: 0
+    rightPadding: 0
 
     header: ToolBar {
         background: Rectangle {
@@ -27,7 +35,7 @@ Dialog {
         }
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 18
+            anchors.leftMargin: 16
             anchors.rightMargin: 8
             Label {
                 Layout.fillWidth: true
@@ -77,8 +85,8 @@ Dialog {
                     anchors.right: parent.right
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
-                    anchors.topMargin: 12
-                    anchors.bottomMargin: 12
+                    anchors.topMargin: 16
+                    anchors.bottomMargin: 16
                     spacing: 8
                     Label {
                         text: "GAME FOLDER"
@@ -90,10 +98,10 @@ Dialog {
                         Accessible.name: "GAME FOLDER"
                         objectName: "qmlSettingsPath"
                         Layout.fillWidth: true
-                        text: settingsModel.gamePath
+                        text: settingsModel ? settingsModel.gamePath : ""
                         readOnly: true
                         selectByMouse: true
-                        placeholderText: text === "" ? (settingsModel.gameSuggestion !== "" ? settingsModel.gameSuggestion : "Select the game folder containing WoW.exe") : ""
+                        placeholderText: text === "" ? ((settingsModel && settingsModel.gameSuggestion !== "") ? settingsModel.gameSuggestion : "Select the game folder containing WoW.exe") : ""
                         placeholderTextColor: appTheme.colors["C_TEXT_DIM"]
                         font.family: "monospace"
                     }
@@ -107,7 +115,7 @@ Dialog {
                         Button {
                             text: "Open folder"
                             flat: true
-                            onClicked: settingsModel.openClientFolder()
+                            onClicked: if (settingsModel) settingsModel.openClientFolder()
                         }
                         Item { Layout.fillWidth: true }
                     }
@@ -120,29 +128,29 @@ Dialog {
                     CheckBox {
                         objectName: "qmlSettingsClearWdb"
                         text: "Clear WDB on game launch"
-                        visible: settingsModel.canLaunch
-                        checked: settingsModel.clearWdb
-                        onToggled: settingsModel.setClearWdb(checked)
+                        visible: settingsModel ? settingsModel.canLaunch : false
+                        checked: settingsModel ? settingsModel.clearWdb : false
+                        onToggled: if (settingsModel) settingsModel.setClearWdb(checked)
                     }
                     CheckBox {
                         objectName: "qmlSettingsCloseOnLaunch"
                         text: "Close Nostalgia Launcher on game launch"
-                        visible: settingsModel.canLaunch
-                        checked: settingsModel.closeOnLaunch
-                        onToggled: settingsModel.setCloseOnLaunch(checked)
+                        visible: settingsModel ? settingsModel.canLaunch : false
+                        checked: settingsModel ? settingsModel.closeOnLaunch : false
+                        onToggled: if (settingsModel) settingsModel.setCloseOnLaunch(checked)
                     }
                     CheckBox {
                         objectName: "qmlSettingsClientUpdate"
                         text: "Enable client updates"
-                        checked: settingsModel.clientUpdates
-                        onToggled: settingsModel.setClientUpdates(checked)
+                        checked: settingsModel ? settingsModel.clientUpdates : false
+                        onToggled: if (settingsModel) settingsModel.setClientUpdates(checked)
                     }
                     Button {
                         objectName: "qmlSettingsLinuxButton"
                         text: "Linux (UMU) Settings…"
-                        visible: settingsModel.isLinux
+                        visible: settingsModel ? settingsModel.isLinux : false
                         flat: true
-                        onClicked: settingsModel.requestLinux()
+                        onClicked: if (settingsModel) settingsModel.requestLinux()
                     }
                     Item { Layout.fillHeight: true }
                 }
@@ -157,8 +165,8 @@ Dialog {
                     anchors.right: parent.right
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
-                    anchors.topMargin: 12
-                    anchors.bottomMargin: 12
+                    anchors.topMargin: 16
+                    anchors.bottomMargin: 16
                     spacing: 8
                     Label {
                         text: "DOWNLOAD SOURCE"
@@ -167,21 +175,23 @@ Dialog {
                         color: appTheme.colors["C_GOLD"]
                     }
                     Repeater {
-                        model: settingsModel.sources
+                        model: settingsModel ? settingsModel.sources : []
                         RowLayout {
+                            id: sourceRow
+                            required property var modelData
                             width: parent.width
                             Label {
                                 text: "●"
-                                color: modelData.status === "online" ? appTheme.colors["C_OK"] : (modelData.status === "offline" ? appTheme.colors["C_ERR"] : appTheme.colors["C_TEXT_DIM"])
+                                color: sourceRow.modelData.status === "online" ? appTheme.colors["C_OK"] : (sourceRow.modelData.status === "offline" ? appTheme.colors["C_ERR"] : appTheme.colors["C_TEXT_DIM"])
                             }
                             Label {
-                                text: modelData.name
+                                text: sourceRow.modelData.name
                                 font.bold: true
                                 font.pointSize: 10
                                 color: appTheme.colors["C_TEXT"]
                             }
                             Label {
-                                text: modelData.status
+                                text: sourceRow.modelData.status
                                 font.pointSize: 9
                                 color: appTheme.colors["C_TEXT_DIM"]
                             }
@@ -191,7 +201,7 @@ Dialog {
                         objectName: "qmlSettingsSourceRefresh"
                         text: "⟳  Check source"
                         flat: true
-                        onClicked: settingsModel.checkSources()
+                        onClicked: if (settingsModel) settingsModel.checkSources()
                     }
                     Label {
                         text: "CATALOG REGISTRIES"
@@ -201,42 +211,42 @@ Dialog {
                     }
                     CheckBox {
                         text: "Use community default addons catalog"
-                        enabled: settingsModel.addonsDefaultAvail
-                        checked: settingsModel.addonsDefault && settingsModel.addonsDefaultAvail
-                        onToggled: settingsModel.setAddonsDefault(checked)
+                        enabled: settingsModel ? settingsModel.addonsDefaultAvail : false
+                        checked: settingsModel ? (settingsModel.addonsDefault && settingsModel.addonsDefaultAvail) : false
+                        onToggled: if (settingsModel) settingsModel.setAddonsDefault(checked)
                     }
                     CheckBox {
                         text: "Use community default mods catalog"
-                        enabled: settingsModel.modsDefaultAvail
-                        checked: settingsModel.modsDefault && settingsModel.modsDefaultAvail
-                        onToggled: settingsModel.setModsDefault(checked)
+                        enabled: settingsModel ? settingsModel.modsDefaultAvail : false
+                        checked: settingsModel ? (settingsModel.modsDefault && settingsModel.modsDefaultAvail) : false
+                        onToggled: if (settingsModel) settingsModel.setModsDefault(checked)
                     }
                     RegistryRow {
                         label: "ADDONS"
-                        url: settingsModel.addonsUrl
-                        onApply: (text) => settingsModel.applyAddonsUrl(text)
-                        onReset: () => settingsModel.resetAddonsUrl()
-                        onReload: () => settingsModel.reloadAddons()
-                        onOpenCustom: () => settingsModel.openAddonsCustom()
-                        onClearCustom: () => settingsModel.clearAddonsCustom()
+                        url: settingsModel ? settingsModel.addonsUrl : ""
+                        onApply: (text) => { if (settingsModel) settingsModel.applyAddonsUrl(text) }
+                        onReset: () => { if (settingsModel) settingsModel.resetAddonsUrl() }
+                        onReload: () => { if (settingsModel) settingsModel.reloadAddons() }
+                        onOpenCustom: () => { if (settingsModel) settingsModel.openAddonsCustom() }
+                        onClearCustom: () => { if (settingsModel) settingsModel.clearAddonsCustom() }
                     }
                     RegistryRow {
                         label: "MODS"
-                        url: settingsModel.modsUrl
-                        onApply: (text) => settingsModel.applyModsUrl(text)
-                        onReset: () => settingsModel.resetModsUrl()
-                        onReload: () => settingsModel.reloadMods()
-                        onOpenCustom: () => settingsModel.openModsCustom()
-                        onClearCustom: () => settingsModel.clearModsCustom()
+                        url: settingsModel ? settingsModel.modsUrl : ""
+                        onApply: (text) => { if (settingsModel) settingsModel.applyModsUrl(text) }
+                        onReset: () => { if (settingsModel) settingsModel.resetModsUrl() }
+                        onReload: () => { if (settingsModel) settingsModel.reloadMods() }
+                        onOpenCustom: () => { if (settingsModel) settingsModel.openModsCustom() }
+                        onClearCustom: () => { if (settingsModel) settingsModel.clearModsCustom() }
                     }
                     Label {
                         objectName: "qmlSettingsRegistryStatus"
                         Layout.fillWidth: true
-                        text: settingsModel.registryStatus
+                        text: settingsModel ? settingsModel.registryStatus : ""
                         font.pointSize: 9
                         color: appTheme.colors["C_ERR"]
                         wrapMode: Text.WordWrap
-                        visible: settingsModel.registryStatus !== ""
+                        visible: settingsModel ? settingsModel.registryStatus !== "" : false
                     }
                     Item { Layout.fillHeight: true }
                 }
@@ -251,8 +261,8 @@ Dialog {
                     anchors.right: parent.right
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
-                    anchors.topMargin: 12
-                    anchors.bottomMargin: 12
+                    anchors.topMargin: 16
+                    anchors.bottomMargin: 16
                     spacing: 8
                     Label {
                         text: "PROFILES"
@@ -275,8 +285,8 @@ Dialog {
                             objectName: "qmlProfilesCombo"
                             Layout.fillWidth: true
                             Layout.minimumWidth: 120
-                            model: settingsModel.profiles
-                            currentIndex: Math.max(0, settingsModel.profiles.indexOf(settingsModel.activeProfile))
+                            model: settingsModel ? settingsModel.profiles : []
+                            currentIndex: Math.max(0, settingsModel ? settingsModel.profiles.indexOf(settingsModel.activeProfile) : 0)
                             // Elide long server names so Import/Delete stay
                             // visible (same pattern as the header combo).
                             contentItem: Text {
@@ -305,11 +315,11 @@ Dialog {
                     Label {
                         objectName: "qmlProfilesStatus"
                         Layout.fillWidth: true
-                        text: settingsModel.profilesStatus
+                        text: settingsModel ? settingsModel.profilesStatus : ""
                         font.pointSize: 9
                         color: appTheme.colors["C_ERR"]
                         wrapMode: Text.WordWrap
-                        visible: settingsModel.profilesStatus !== ""
+                        visible: settingsModel ? settingsModel.profilesStatus !== "" : false
                     }
                     Item { Layout.fillHeight: true }
                 }
@@ -324,8 +334,8 @@ Dialog {
                     anchors.right: parent.right
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
-                    anchors.topMargin: 12
-                    anchors.bottomMargin: 12
+                    anchors.topMargin: 16
+                    anchors.bottomMargin: 16
                     spacing: 8
                     Label {
                         text: "TROUBLESHOOTING"
@@ -337,20 +347,20 @@ Dialog {
                         objectName: "qmlSettingsVerify"
                         text: "✓  Verify game files"
                         flat: true
-                        onClicked: settingsModel.verifyFiles()
+                        onClicked: if (settingsModel) settingsModel.verifyFiles()
                     }
                     Button {
                         objectName: "qmlSettingsLogs"
-                        text: settingsModel.logsOpen ? "Hide logs" : "Show logs"
+                        text: (settingsModel && settingsModel.logsOpen) ? "Hide logs" : "Show logs"
                         flat: true
-                        onClicked: settingsModel.requestLogs()
+                        onClicked: if (settingsModel) settingsModel.requestLogs()
                     }
                     Button {
                         objectName: "qmlSettingsAv"
                         text: "⛊  Add game folder to Defender exclusions"
-                        visible: settingsModel.canAntivirus
+                        visible: settingsModel ? settingsModel.canAntivirus : false
                         flat: true
-                        onClicked: settingsModel.allowAntivirus()
+                        onClicked: if (settingsModel) settingsModel.allowAntivirus()
                     }
                     Item { Layout.fillHeight: true }
                 }
@@ -358,24 +368,13 @@ Dialog {
         }
     }
 
-    footer: DialogButtonBox {
-        standardButtons: DialogButtonBox.Close
-        onRejected: root.reject()
-    }
-
-    FileDialog {
+    // No footer: the header ✕ closes (DialogButtonBox.Close added a
+    // full-width white bar that ate the bottom of every tab).
+    FolderDialog {
         id: folderPicker
         objectName: "qmlSettingsFolderPicker"
         title: "Select game client folder"
-        // NOTE: FileDialog.OpenDirectory is undefined on some backends
-        // (offscreen probe: OpenFile=0, OpenDirectory=undefined) — the
-        // folder mode is the dialog default, so only set fileMode when
-        // the enum exists.
-        Component.onCompleted: {
-            if (FileDialog.OpenDirectory !== undefined)
-                fileMode = FileDialog.OpenDirectory
-        }
-        onAccepted: settingsModel.setGameFolder(currentFolder.toString().replace(/^file:\/\//, ""))
+        onAccepted: if (settingsModel) settingsModel.setGameFolder(selectedFolder.toString().replace(/^file:\/\//, ""))
     }
 
     MessageDialog {
@@ -383,7 +382,7 @@ Dialog {
         title: "Delete profile"
         text: "Delete this profile? Its server config, state and caches will be removed."
         buttons: MessageDialog.Yes | MessageDialog.No
-        onAccepted: settingsModel.deleteProfile(profilesCombo.currentText)
+        onAccepted: if (settingsModel) settingsModel.deleteProfile(profilesCombo.currentText)
     }
 
     LinuxSettingsView {
@@ -394,7 +393,7 @@ Dialog {
     WizardView {
         id: importWizard
         objectName: "qmlImportWizard"
-        onAccepted: settingsModel.finishImport()
+        onAccepted: if (settingsModel) settingsModel.finishImport()
     }
 
     Connections {
@@ -407,6 +406,7 @@ Dialog {
 
     // One shared registry row (ADDONS / MODS).
     component RegistryRow: ColumnLayout {
+        id: regRow
         property string label: ""
         property string url: ""
         signal apply(string text)
@@ -417,16 +417,16 @@ Dialog {
         Layout.fillWidth: true
         spacing: 2
         Label {
-            text: label
+            text: regRow.label
             font.bold: true
             font.pointSize: 9
             color: appTheme.colors["C_TEXT"]
         }
         TextField {
-            Accessible.name: label
+            Accessible.name: regRow.label
             id: urlField
             Layout.fillWidth: true
-            text: url
+            text: regRow.url
             selectByMouse: true
             font.family: "monospace"
         }
@@ -435,31 +435,31 @@ Dialog {
             spacing: 8
             Button {
                 text: "Apply"
-                onClicked: apply(urlField.text)
+                onClicked: regRow.apply(urlField.text)
             }
             Button {
                 text: "Reset"
                 flat: true
                 ToolTip.text: "Use the default server catalog"
                 ToolTip.visible: hovered
-                onClicked: reset()
+                onClicked: regRow.reset()
             }
             Button {
                 text: "Reload"
                 flat: true
                 ToolTip.text: "Fetch the catalog now and refresh the tab"
                 ToolTip.visible: hovered
-                onClicked: reload()
+                onClicked: regRow.reload()
             }
             Button {
                 text: "Open custom file"
                 flat: true
-                onClicked: openCustom()
+                onClicked: regRow.openCustom()
             }
             Button {
                 text: "Clear custom entries"
                 flat: true
-                onClicked: clearCustom()
+                onClicked: regRow.clearCustom()
             }
         }
     }

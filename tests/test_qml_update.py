@@ -22,7 +22,6 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
 from nostalgia_launcher.state.events import ProgressChanged, UpdateFilesList
-from nostalgia_launcher.ui.qml.addons import AddonsModel
 from nostalgia_launcher.ui.qml.app import qml_dir
 from nostalgia_launcher.ui.qml.content import ContentListModel
 from nostalgia_launcher.ui.qml.custom import (
@@ -37,7 +36,7 @@ from nostalgia_launcher.ui.qml.viewmodels import (
     NewsFeedModel,
     ThemeBridge,
     UpdateFilesModel,
-    UpdateState,
+    UpdateViewState,
 )
 from nostalgia_launcher.ui.qml.wizard import WizardModel
 from nostalgia_launcher.ui.theme import Palette
@@ -70,7 +69,7 @@ def qapp():
 
 @pytest.fixture()
 def state(qapp):
-    return UpdateState()
+    return UpdateViewState()
 
 
 @pytest.fixture()
@@ -85,7 +84,9 @@ def engine(qapp):
     eng.rootContext().setContextProperty(
         "assetsModel", ContentListModel("assets empty")
     )
-    eng.rootContext().setContextProperty("addonsModel", AddonsModel())
+    eng.rootContext().setContextProperty(
+        "addonsModel", ContentListModel("addons empty")
+    )
     eng.rootContext().setContextProperty("settingsModel", SettingsModel())
     eng.rootContext().setContextProperty("logModel", LogModel())
     eng.rootContext().setContextProperty("wizard", WizardModel())
@@ -97,7 +98,7 @@ def engine(qapp):
         "customAssetModel", CustomAssetModel()
     )
     eng.rootContext().setContextProperty("linuxModel", LinuxModel())
-    update = UpdateState()
+    update = UpdateViewState()
     eng.rootContext().setContextProperty("updateState", update)
     eng.load(QUrl.fromLocalFile(os.path.join(qml_dir(), "main.qml")))
     yield eng, update
@@ -130,6 +131,32 @@ def test_files_append_done_dedups(qapp):
     files.append_done("Data/patch.mpq")
     assert files.rowCount() == 2
     assert files.data(files.index(1), UpdateFilesModel.DoneRole) is True
+
+
+def test_files_strip_manifest_prefix(qapp):
+    """Verify-listed `manifest:` paths display stripped (torrent paths
+    have no prefix, so the raw prefix would only show on manifest
+    updates)."""
+    files = UpdateFilesModel()
+    files.set_files(["manifest:Data/a.mpq", "Data/b.mpq"])
+    assert files.rowCount() == 2
+    assert files.data(files.index(0), UpdateFilesModel.NameRole) == (
+        "Data/a.mpq"
+    )
+    assert files.data(files.index(1), UpdateFilesModel.NameRole) == (
+        "Data/b.mpq"
+    )
+
+
+def test_files_manifest_progress_marks_listed_row(qapp):
+    """Download progress reports the stripped path while verify listed
+    the prefixed one — mark_done must hit the listed row instead of
+    appending a duplicate."""
+    files = UpdateFilesModel()
+    files.set_files(["manifest:Data/a.mpq"])
+    assert files.mark_done("Data/a.mpq") is True
+    assert files.rowCount() == 1
+    assert files.data(files.index(0), UpdateFilesModel.DoneRole) is True
 
 
 def test_files_mark_all_done(qapp):
@@ -201,12 +228,30 @@ def test_progress_tracks_files(state):
     assert files.rowCount() == 2
 
 
+def test_progress_manifest_prefixed_list_no_duplicate(state):
+    """Verify listed `manifest:Data/a.mpq`; progress reports the
+    stripped download path — the listed row flips done, rowCount stays
+    1 (no duplicate stripped row appended)."""
+    state.on_files(UpdateFilesList(["manifest:Data/a.mpq"]))
+    files = state.property("files")
+    assert files.rowCount() == 1
+    assert files.data(files.index(0), UpdateFilesModel.NameRole) == (
+        "Data/a.mpq"
+    )
+    state.on_progress(_progress(value=0.5, current_file="Data/a.mpq"))
+    assert files.rowCount() == 1
+    assert files.data(files.index(0), UpdateFilesModel.DoneRole) is True
+
+
 def test_status_intake(state):
     state.on_status("Verifying…")
     assert state.property("phaseText") == "Verifying…"
-    assert state.property("fileText") == "Preparing client update…"
+    assert state.property("fileText") == "Verifying client files…"
     state.on_status("something else")
     assert state.property("phaseText") == "Verifying…"
+    state.on_status("Updating…")
+    assert state.property("phaseText") == "Updating…"
+    assert state.property("fileText") == "Preparing client update…"
 
 
 # ── finish matrix ─────────────────────────────────────────────────────
@@ -216,6 +261,7 @@ def test_verify_ok(state):
     state.on_files(UpdateFilesList(["a"]))
     state.on_finished("verify", True, "")
     assert state.property("phaseText") == "Verified"
+    assert state.property("fileText") == "All files verified."
     assert state.property("progressVisible") is False
     files = state.property("files")
     assert files.data(files.index(0), UpdateFilesModel.DoneRole) is True
@@ -224,6 +270,7 @@ def test_verify_ok(state):
 def test_update_ok(state):
     state.on_finished("update", True, "")
     assert state.property("phaseText") == "Complete"
+    assert state.property("fileText") == "Client is up to date."
 
 
 def test_verify_failed_needs_update(state):
@@ -249,8 +296,10 @@ def test_operation_failed(state):
 def test_mods_addons_chain(state):
     state.on_finished("mods", True, "")
     assert state.property("phaseText") == "Updating addons and mods"
+    assert state.property("fileText") == "Mods complete; checking addons…"
     state.on_finished("addons", True, "")
     assert state.property("phaseText") == "Complete"
+    assert state.property("fileText") == "Addons up to date."
 
 
 def test_primary_and_recheck_handlers(state):
@@ -289,6 +338,7 @@ def test_update_view_loads(engine):
         "qmlUpdateProgress",
         "qmlUpdateFile",
         "qmlUpdateFileList",
+        "qmlUpdateFileScrollBar",
         "qmlUpdateTransport",
         "qmlUpdateAmount",
         "qmlUpdateSpeed",

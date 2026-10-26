@@ -3,6 +3,8 @@
 // current file, Method/Progress/Speed/Peers grid, updated-files list.
 // Reads the `updateState` context property (ui/qml/viewmodels.py).
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -46,7 +48,7 @@ ScrollView {
             Layout.fillWidth: true
             Layout.leftMargin: 32
             Layout.rightMargin: 32
-            text: updateState.phaseText
+            text: updateState ? updateState.phaseText : ""
             font.pointSize: 11
             color: appTheme.colors["C_TEXT"]
         }
@@ -58,8 +60,8 @@ ScrollView {
             Layout.rightMargin: 32
             from: 0
             to: 100
-            value: updateState.progressValue * 100
-            visible: updateState.progressVisible
+            value: updateState ? updateState.progressValue * 100 : 0
+            visible: updateState ? updateState.progressVisible : false
         }
 
         Label {
@@ -67,7 +69,7 @@ ScrollView {
             Layout.fillWidth: true
             Layout.leftMargin: 32
             Layout.rightMargin: 32
-            text: updateState.fileText
+            text: updateState ? updateState.fileText : ""
             font.pointSize: 10
             color: appTheme.colors["C_TEXT_DIM"]
             wrapMode: Text.WordWrap
@@ -79,14 +81,21 @@ ScrollView {
             Layout.fillWidth: true
             Layout.leftMargin: 32
             Layout.rightMargin: 32
-            Layout.preferredHeight: 120
+            Layout.preferredHeight: count > 0 ? 120 : 0
+            visible: count > 0
             clip: true
-            model: updateState.files
+            ScrollBar.vertical: ScrollBar {
+                objectName: "qmlUpdateFileScrollBar"
+                policy: ScrollBar.AsNeeded
+            }
+            model: updateState ? updateState.files : null
             delegate: Label {
-                width: fileList.width
-                text: (model.done ? "✓ " : "… ") + model.name
+                id: fileItem
+                required property var model
+                width: ListView.view.width
+                text: (fileItem.model.done ? "✓ " : "… ") + fileItem.model.name
                 font.pointSize: 9
-                color: model.done ? appTheme.colors["C_OK"] : appTheme.colors["C_TEXT_DIM"]
+                color: fileItem.model.done ? appTheme.colors["C_OK"] : appTheme.colors["C_TEXT_DIM"]
                 elide: Text.ElideMiddle
             }
         }
@@ -102,28 +111,28 @@ ScrollView {
             Label {
                 objectName: "qmlUpdateTransport"
                 Layout.fillWidth: true
-                text: updateState.transportText
+                text: updateState ? updateState.transportText : ""
                 color: appTheme.colors["C_TEXT_DIM"]
             }
             Label { text: "Progress:"; font.bold: true; color: appTheme.colors["C_TEXT"] }
             Label {
                 objectName: "qmlUpdateAmount"
                 Layout.fillWidth: true
-                text: updateState.amountText
+                text: updateState ? updateState.amountText : ""
                 color: appTheme.colors["C_TEXT_DIM"]
             }
             Label { text: "Speed:"; font.bold: true; color: appTheme.colors["C_TEXT"] }
             Label {
                 objectName: "qmlUpdateSpeed"
                 Layout.fillWidth: true
-                text: updateState.speedText
+                text: updateState ? updateState.speedText : ""
                 color: appTheme.colors["C_TEXT_DIM"]
             }
             Label { text: "Peers:"; font.bold: true; color: appTheme.colors["C_TEXT"] }
             Label {
                 objectName: "qmlUpdatePeers"
                 Layout.fillWidth: true
-                text: updateState.peersText
+                text: updateState ? updateState.peersText : ""
                 color: appTheme.colors["C_TEXT_DIM"]
             }
         }

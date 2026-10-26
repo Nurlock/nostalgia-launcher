@@ -3,12 +3,16 @@
 // (ui/qml/custom.py:CustomAddonModel); emits accepted/rejected instead
 // of closing anything itself.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 ColumnLayout {
+    id: root
+
     signal accepted()
     signal rejected()
 
@@ -24,20 +28,20 @@ ColumnLayout {
         objectName: "qmlCustomAddonUrl"
         Layout.fillWidth: true
         font.family: "monospace"
-        onTextChanged: customAddonModel.setUrl(text)
+        onTextChanged: if (customAddonModel) customAddonModel.setUrl(text)
     }
     Label {
         objectName: "qmlCustomAddonHint"
         Layout.fillWidth: true
-        text: customAddonModel.hostsHint + "\nInstalls into Interface/AddOns/<folder>."
+        text: (customAddonModel ? customAddonModel.hostsHint : "") + "\nInstalls into Interface/AddOns/<folder>."
         color: appTheme.colors["C_TEXT_DIM"]
         wrapMode: Text.WordWrap
     }
     Label {
         objectName: "qmlCustomAddonError"
         Layout.fillWidth: true
-        visible: customAddonModel.errorText !== ""
-        text: customAddonModel.errorText
+        visible: customAddonModel ? customAddonModel.errorText !== "" : false
+        text: customAddonModel ? customAddonModel.errorText : ""
         color: appTheme.colors["C_ERR"]
         wrapMode: Text.WordWrap
     }
@@ -48,15 +52,15 @@ ColumnLayout {
         Button {
             text: "Cancel"
             flat: true
-            onClicked: rejected()
+            onClicked: root.rejected()
         }
         Button {
             objectName: "qmlCustomAddonInstall"
             text: "Install"
             highlighted: true
             onClicked: {
-                if (customAddonModel.submit())
-                    accepted();
+                if (customAddonModel && customAddonModel.submit())
+                    root.accepted();
             }
         }
     }

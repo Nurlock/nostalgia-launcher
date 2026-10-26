@@ -20,7 +20,6 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
-from nostalgia_launcher.ui.qml.addons import AddonsModel
 from nostalgia_launcher.ui.qml.app import qml_dir
 from nostalgia_launcher.ui.qml.content import ContentListModel
 from nostalgia_launcher.ui.qml.custom import (
@@ -34,7 +33,7 @@ from nostalgia_launcher.ui.qml.viewmodels import (
     LauncherState,
     NewsFeedModel,
     ThemeBridge,
-    UpdateState,
+    UpdateViewState,
 )
 from nostalgia_launcher.ui.qml.wizard import WizardModel
 from nostalgia_launcher.ui.theme import Palette
@@ -87,14 +86,16 @@ def engine(qapp):
     eng.rootContext().setContextProperty("launcherState", LauncherState())
     eng.rootContext().setContextProperty("appTheme", ThemeBridge(Palette()))
     eng.rootContext().setContextProperty("newsModel", NewsFeedModel())
-    eng.rootContext().setContextProperty("updateState", UpdateState())
+    eng.rootContext().setContextProperty("updateState", UpdateViewState())
     eng.rootContext().setContextProperty(
         "modsModel", ContentListModel("mods empty")
     )
     eng.rootContext().setContextProperty(
         "assetsModel", ContentListModel("assets empty")
     )
-    eng.rootContext().setContextProperty("addonsModel", AddonsModel())
+    eng.rootContext().setContextProperty(
+        "addonsModel", ContentListModel("addons empty")
+    )
     settings = SettingsModel()
     settings.set_snapshot_provider(lambda: _snapshot())
     settings.refresh()

@@ -107,7 +107,7 @@ class LauncherState(QObject):
     )
 
     @Slot(bool)
-    def setProgressVisible(self, value: bool):
+    def setProgressVisible(self, value: bool) -> None:
         """Footer mini-bar visibility (hidden when updates are off)."""
         self._set_progress_visible(value)
 
@@ -155,27 +155,27 @@ class LauncherState(QObject):
     # ── event intake ──────────────────────────────────────────────────
 
     @Slot(str)
-    def setServerName(self, text: str):
+    def setServerName(self, text: str) -> None:
         """Header wordmark text (main-thread slot for async updates)."""
         self._set_server_name(text)
 
     @Slot(str)
-    def setLogoSource(self, source: str):
+    def setLogoSource(self, source: str) -> None:
         """Header logo `file://` URL (main-thread direct setter)."""
         self._set_logo_source(source)
 
     @Slot(str)
-    def applyLogoSource(self, source: str):
+    def applyLogoSource(self, source: str) -> None:
         """Queued logo setter — the worker thread emits `logoFetched`."""
         self._set_logo_source(source)
 
     @Slot(str)
-    def setStatusText(self, text: str):
+    def setStatusText(self, text: str) -> None:
         """Slot for `ControllerBridge.statusChanged`."""
         self._set_status_text(text)
 
     @Slot(float, str)
-    def setProgress(self, value: float, label: str):
+    def setProgress(self, value: float, label: str) -> None:
         """Slot for `ControllerBridge.progressChanged`."""
         self._set_progress_value(value)
         self._set_progress_label(label)
@@ -250,6 +250,7 @@ class NewsFeedModel(QAbstractListModel):
     statusTextChanged = Signal()
     featuredChanged = Signal()
     failedChanged = Signal()
+    configuredChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -313,6 +314,11 @@ class NewsFeedModel(QAbstractListModel):
 
     failed = Property(bool, _get_failed, notify=failedChanged)
 
+    def _get_configured(self) -> bool:
+        return self._configured
+
+    configured = Property(bool, _get_configured, notify=configuredChanged)
+
     # ── intake ──────────────────────────────────────────────────────
 
     def set_refresh_handler(self, callback):
@@ -320,13 +326,14 @@ class NewsFeedModel(QAbstractListModel):
         self._on_refresh = callback
 
     @Slot()
-    def refresh(self):
+    def refresh(self) -> None:
         """QML refresh button → controller (force refetch)."""
         if self._on_refresh is not None:
             self._on_refresh()
 
     def set_snapshot(self, items, loading=False, error="", configured=True):
         """Replace the announcements snapshot (mirrors panel `render`)."""
+        prev_configured = self._configured
         self.beginResetModel()
         try:
             self._items = list(items or [])
@@ -335,6 +342,8 @@ class NewsFeedModel(QAbstractListModel):
             self._configured = bool(configured)
         finally:
             self.endResetModel()
+        if self._configured != prev_configured:
+            self.configuredChanged.emit()
         self._refresh_status()
 
     def on_event(self, event):
@@ -380,10 +389,22 @@ class NewsFeedModel(QAbstractListModel):
 
 
 class UpdateFilesModel(QAbstractListModel):
-    """Updated-files list for QML (mirrors panel file tracking)."""
+    """Updated-files list for QML (mirrors panel file tracking).
+
+    Manifest-owned paths arrive ``manifest:``-prefixed for routing;
+    the tab shows them stripped (torrent paths have no prefix, so the
+    raw prefix would only ever appear on manifest updates).
+    """
 
     NameRole = Qt.ItemDataRole.UserRole + 1
     DoneRole = Qt.ItemDataRole.UserRole + 2
+
+    @staticmethod
+    def _display(path) -> str:
+        name = str(path).replace("\\", "/")
+        if name.startswith("manifest:"):
+            return name[len("manifest:") :]
+        return name
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -415,14 +436,14 @@ class UpdateFilesModel(QAbstractListModel):
         """Replace the list (separators normalized to "/"), all pending."""
         self.beginResetModel()
         try:
-            self._files = [str(f).replace("\\", "/") for f in (files or [])]
+            self._files = [self._display(f) for f in (files or [])]
             self._done = set()
         finally:
             self.endResetModel()
 
     def mark_done(self, path: str) -> bool:
         """Mark a listed file done; True when it was listed."""
-        name = str(path).replace("\\", "/")
+        name = self._display(path)
         if name not in self._files:
             return False
         if name not in self._done:
@@ -434,7 +455,7 @@ class UpdateFilesModel(QAbstractListModel):
 
     def append_done(self, path: str):
         """Append an already-updated file (dedups against listed ones)."""
-        name = str(path).replace("\\", "/")
+        name = self._display(path)
         if name in self._files:
             self.mark_done(name)
             return
@@ -455,8 +476,13 @@ class UpdateFilesModel(QAbstractListModel):
             self.dataChanged.emit(top, bottom, [UpdateFilesModel.DoneRole])
 
 
-class UpdateState(QObject):
+class UpdateViewState(QObject):
     """UPDATE tab + footer primary button (mirrors UpdatePanel + footer).
+
+    Named to avoid colliding with the controller-side state dataclass
+    ``state.models.UpdateState`` (same importable short name, different
+    layer — dataclass vs Qt view-model). The QML context property is
+    still ``updateState``; only the Python class name changed.
 
     Formatting (sizes, speeds) happens here via `core.helpers` so QML
     stays declarative. Controller calls arrive as injected callbacks
@@ -574,17 +600,17 @@ class UpdateState(QObject):
         self._on_realm = callback
 
     @Slot()
-    def primary(self):
+    def primary(self) -> None:
         if self._on_primary is not None:
             self._on_primary()
 
     @Slot()
-    def recheck(self):
+    def recheck(self) -> None:
         if self._on_recheck is not None:
             self._on_recheck()
 
     @Slot(bool)
-    def resolveRealm(self, inject: bool):
+    def resolveRealm(self, inject: bool) -> None:
         self._realm_prompt = ""
         self.realmChanged.emit()
         if self._on_realm is not None:
@@ -662,7 +688,10 @@ class UpdateState(QObject):
             self._files.set_files(event.files or [])
 
     def on_status(self, text: str):
-        if text in ("Verifying…", "Updating…"):
+        if text == "Verifying…":
+            self._set_phase(text)
+            self._set_file("Verifying client files…")
+        elif text == "Updating…":
             self._set_phase(text)
             self._set_file("Preparing client update…")
 
@@ -671,6 +700,14 @@ class UpdateState(QObject):
             self._set_visible(False)
             if ok:
                 self._set_phase("Verified" if kind == "verify" else "Complete")
+                self._set_file(
+                    message
+                    or (
+                        "All files verified."
+                        if kind == "verify"
+                        else "Client is up to date."
+                    )
+                )
                 self._files.mark_all_done()
             else:
                 self._set_phase(
@@ -682,6 +719,7 @@ class UpdateState(QObject):
             self._set_file("Mods complete; checking addons…")
         elif kind == "addons" and ok:
             self._set_phase("Complete")
+            self._set_file(message or "Addons up to date.")
 
     def on_failed(self, kind: str, message: str):
         if kind in ("update", "verify"):

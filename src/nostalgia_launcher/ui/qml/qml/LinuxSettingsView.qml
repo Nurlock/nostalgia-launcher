@@ -12,9 +12,16 @@ Dialog {
     id: root
     title: "Linux (UMU) Settings"
     modal: true
-    width: Math.min(560, parent.width * 0.9)
-    height: Math.min(560, parent.height * 0.9)
+    // Fill 95% of the mother window; content fills the dialog edge
+    // to edge. No footer (the header ✕ closes).
+    width: parent.width * 0.95
+    height: parent.height * 0.95
     anchors.centerIn: parent
+    padding: 0
+    topPadding: 0
+    bottomPadding: 0
+    leftPadding: 0
+    rightPadding: 0
 
     header: ToolBar {
         background: Rectangle {
@@ -22,7 +29,7 @@ Dialog {
         }
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 18
+            anchors.leftMargin: 16
             anchors.rightMargin: 8
             Label {
                 Layout.fillWidth: true
@@ -49,12 +56,17 @@ Dialog {
         clip: true
         contentWidth: availableWidth
         ColumnLayout {
-            width: parent.width
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            anchors.topMargin: 16
+            anchors.bottomMargin: 16
             spacing: 8
             Label {
                 objectName: "qmlLinuxUmuHint"
                 Layout.fillWidth: true
-                text: linuxModel.umuHint
+                text: linuxModel ? linuxModel.umuHint : ""
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT_DIM"]
                 wrapMode: Text.WordWrap
@@ -73,8 +85,8 @@ Dialog {
                     objectName: "qmlLinuxProton"
                     Layout.fillWidth: true
                     editable: true
-                    model: linuxModel.protonOptions
-                    Component.onCompleted: currentIndex = Math.max(0, find(linuxModel.proton))
+                    model: linuxModel ? linuxModel.protonOptions : []
+                    currentIndex: linuxModel ? Math.max(0, find(linuxModel.proton)) : 0
                 }
                 Button {
                     text: "Apply"
@@ -94,8 +106,8 @@ Dialog {
                     id: rendererCombo
                     objectName: "qmlLinuxRenderer"
                     Layout.fillWidth: true
-                    model: linuxModel.rendererOptions
-                    Component.onCompleted: currentIndex = Math.max(0, find(linuxModel.renderer))
+                    model: linuxModel ? linuxModel.rendererOptions : []
+                    currentIndex: linuxModel ? Math.max(0, find(linuxModel.renderer)) : 0
                 }
                 Button {
                     text: "Apply"
@@ -104,13 +116,13 @@ Dialog {
             }
             CheckBox {
                 text: "Client-folder DXVK (skip Proton's built-in)"
-                checked: linuxModel.dxvk
+                checked: linuxModel ? linuxModel.dxvk : false
                 onToggled: linuxModel.setDxvk(checked)
             }
             CheckBox {
                 text: "GameMode"
-                enabled: linuxModel.gamemodeAvail
-                checked: linuxModel.gamemode && linuxModel.gamemodeAvail
+                enabled: linuxModel ? linuxModel.gamemodeAvail : false
+                checked: linuxModel ? (linuxModel.gamemode && linuxModel.gamemodeAvail) : false
                 onToggled: linuxModel.setGamemode(checked)
             }
             Label {
@@ -118,13 +130,13 @@ Dialog {
                 text: "gamemoderun not found — install GameMode to enable."
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT_DIM"]
-                visible: !linuxModel.gamemodeAvail
+                visible: linuxModel ? !linuxModel.gamemodeAvail : false
                 wrapMode: Text.WordWrap
             }
             CheckBox {
                 text: "Wayland backend"
-                enabled: linuxModel.waylandAvail
-                checked: linuxModel.wayland && linuxModel.waylandAvail
+                enabled: linuxModel ? linuxModel.waylandAvail : false
+                checked: linuxModel ? (linuxModel.wayland && linuxModel.waylandAvail) : false
                 onToggled: linuxModel.setWayland(checked)
             }
             Label {
@@ -132,7 +144,7 @@ Dialog {
                 text: "Not running on a Wayland session."
                 font.pointSize: 9
                 color: appTheme.colors["C_TEXT_DIM"]
-                visible: !linuxModel.waylandAvail
+                visible: linuxModel ? !linuxModel.waylandAvail : false
                 wrapMode: Text.WordWrap
             }
             Label {
@@ -147,7 +159,7 @@ Dialog {
                     Accessible.name: "GAMEID"
                     id: gameIdField
                     Layout.fillWidth: true
-                    text: linuxModel.gameId
+                    text: linuxModel ? linuxModel.gameId : ""
                     font.family: "monospace"
                 }
                 Button {
@@ -167,7 +179,7 @@ Dialog {
                     Accessible.name: "umu-run"
                     id: umuPathField
                     Layout.fillWidth: true
-                    text: linuxModel.umuPath
+                    text: linuxModel ? linuxModel.umuPath : ""
                     placeholderText: "auto-detect on PATH"
                     font.family: "monospace"
                 }
@@ -184,10 +196,8 @@ Dialog {
         }
     }
 
-    footer: DialogButtonBox {
-        standardButtons: DialogButtonBox.Close
-    }
-
+    // No footer: the header ✕ closes (a Close button-box would add a
+    // full-width bar that eats the bottom of the dialog).
     FileDialog {
         id: umuPicker
         title: "Select umu-run binary"

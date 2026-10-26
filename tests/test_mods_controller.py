@@ -24,7 +24,6 @@ from nostalgia_launcher.state.models import ModPending
 # Small synthetic registry so tests don't depend on the real one.
 MOD_A = {
     "id": "AlphaMod",
-    "installation": "required",
     "name": "AlphaMod",
     "description": "alpha",
     "source": {
@@ -38,7 +37,6 @@ MOD_A = {
 }
 MOD_B = {
     "id": "BetaMod",
-    "installation": "user_opt_in",
     "name": "BetaMod",
     "description": "beta",
     "source": {
@@ -241,45 +239,23 @@ def test_toggle_updates_pending(controller):
     assert controller.state.pending["AlphaMod"].enabled is False
 
 
-# ── action_for ─────────────────────────────────────────────────────────
-
-
-def test_action_for_returns_retry_update_none(
-    controller, versions, cfg, wait_for_event
-):
-    cfg["mods"] = {
-        "AlphaMod": {"enabled": True, "installed_version": "1.0"},
-        "BetaMod": {
-            "enabled": True,
-            "installed_version": "1.0",
-            "error": "oops",
-        },
-    }
-    controller.state.records, controller.state.unknown = (
-        controller._load_records()
+def test_toggle_server_managed_refused(controller, registry, monkeypatch):
+    """Server-managed (manifest-) entries can't be toggled — the UPDATE
+    tab owns them."""
+    monkeypatch.setattr(
+        mc.mods,
+        "mods_registry",
+        lambda *a, **k: [
+            {"id": "manifest-patch", "name": "Patch", "source": {}}
+        ],
     )
-    versions["AlphaMod"] = "2.0"
-    controller.load_latest_versions()
-    wait_for_event(controller._dispatcher, lambda e: isinstance(e, ModsLoaded))
-    assert controller.action_for("AlphaMod") == "update"
-    assert controller.action_for("BetaMod") == "retry"
-
-
-def test_action_for_none_when_up_to_date(
-    controller, versions, cfg, wait_for_event
-):
-    cfg["mods"] = {"AlphaMod": {"enabled": True, "installed_version": "1.0"}}
-    controller.state.records, controller.state.unknown = (
-        controller._load_records()
+    controller.toggle("manifest-patch", True)
+    assert "manifest-patch" not in controller.state.pending
+    posted = controller._dispatcher.drain()
+    assert any(
+        isinstance(e, LogMessage) and "Server-managed" in e.text
+        for e in posted
     )
-    versions["AlphaMod"] = "1.0"
-    controller.load_latest_versions()
-    wait_for_event(controller._dispatcher, lambda e: isinstance(e, ModsLoaded))
-    assert controller.action_for("AlphaMod") is None
-
-
-def test_action_for_unknown_mod_is_none(controller):
-    assert controller.action_for("NoSuchMod") is None
 
 
 # ── apply ──────────────────────────────────────────────────────────────
@@ -423,7 +399,6 @@ def test_apply_failed_update_keeps_old_record_for_retry(
     assert rec["installed_version"] == "0.5"
     assert rec["installed_files"] == ["old.dll"]
     assert rec["error"] == "download blocked"
-    assert controller.action_for("AlphaMod") == "retry"
 
     controller.apply(only_mod_id="AlphaMod")
 
@@ -615,22 +590,6 @@ def test_load_records_surfaces_unknown_dlls(controller, cfg, tmp_path):
 
     assert controller.state.unknown == ["mystery.dll"]
     assert controller.state.records == {}
-
-
-def test_remove_unknown_deletes_from_filesystem(controller, cfg, tmp_path):
-    out = tmp_path / "game"
-    out.mkdir()
-    (out / "dlls.txt").write_text("mystery.dll\n")
-    (out / "mystery.dll").write_bytes(b"MZ")
-    cfg["out_dir"] = str(out)
-
-    controller.remove_unknown("mystery.dll")
-
-    assert not (out / "dlls.txt").exists()
-    assert not (out / "mystery.dll").exists()
-    assert controller.state.unknown == []
-    collected = controller._dispatcher.drain()
-    assert any(isinstance(e, ModsLoaded) for e in collected)
 
 
 def test_apply_uninstalls_adopted_mod_when_disabled(

@@ -46,19 +46,18 @@ beside them) plus the toolkit glue in `ui/` (`bridge.py`, `theme.py`,
   through the model (`checked: model.checked` binds directly), not via
   childItems walks or role-derived `objectName` (findChild-invisible).
 
+- The ADDONS/MODS/ASSETS manage tabs share one list
+  (`ContentListModel` + `ContentView.qml`): minimal rows (checkbox,
+  name, description, repo link, SERVER lock), tick-to-stage-uninstall,
+  an `Uninstall (N)` footer plus an `Update (N)` button when `updatesCount > 0`.
+  New installs happen in the Browse dialog; the tab badge (`updatesCount`) is
+  fed by the existing background checks — no per-row action buttons, no
+  extras blocks, no filter beyond search.
 - Button language is all-caps for primary/global actions (`UPDATE`/`PLAY`,
-  nav tabs) and Title Case for panel actions ("Apply", "Retry") — machine
-  strings (`"retry"`/`"update"`) stay in models, labels in QML.
-- Every interactive element that carries an `objectName` keeps it stable:
-  engine tests find nodes via `findChild(QObject, "…")`.
-- Icon-only controls get `ToolTip.text` + `Accessible.name`.
-- Context properties are engine-global: `launcherState`, `appTheme`,
-  `newsModel`, `updateState`, `modsModel`, `assetsModel`, `addonsModel`,
-  `settingsModel`, `logModel`, `wizard`, `customModModel`,
-  `customAddonModel`, `customAssetModel`, `linuxModel`. Do NOT name a
-  context property `theme` — it collides with a QtQuick.Controls internal
-  and binds null (use `appTheme`).
-- Destructive actions confirm via `MessageDialog`; checkbox echo
+  nav tabs) and Title Case for panel actions ("Uninstall", "Add ...") —
+  machine state stays in models, labels in QML.
+- Destructive actions run without a confirm dialog on the manage tabs
+  (ticking + Uninstall is the confirm); checkbox echo
   (`onCheckedChanged` re-firing on programmatic refresh) is dropped
   model-side by comparing against current state.
 

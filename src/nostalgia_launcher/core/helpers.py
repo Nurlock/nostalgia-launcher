@@ -5,7 +5,6 @@ No global state, no I/O — deterministic and easy to test in isolation.
 
 import html as html_mod
 import re
-from datetime import datetime
 from urllib.parse import urlsplit
 
 
@@ -49,12 +48,19 @@ def parse_version(v: str) -> tuple:
 
 def same_git_repo(a, b) -> bool:
     """Compare git URLs ignoring a trailing '.git' / slash and case."""
+    return normalize_git_url(a) == normalize_git_url(b)
 
-    def norm(u):
-        u = (u or "").rstrip("/")
-        return (u[:-4] if u.endswith(".git") else u).lower()
 
-    return norm(a) == norm(b)
+def normalize_git_url(url) -> str:
+    """Canonical form of a git URL for identity comparisons and index
+    keys: strip a trailing '.git' / slash, lowercase. Non-string input
+    yields ''."""
+    if not isinstance(url, str):
+        return ""
+    url = url.strip().rstrip("/")
+    if url.endswith(".git"):
+        url = url[:-4]
+    return url.lower()
 
 
 def redact_url(url: str) -> str:
@@ -108,26 +114,3 @@ def strip_html(raw: str) -> str:
     txt = re.sub(r" ?\n ?", "\n", txt)
     txt = re.sub(r"\n{3,}", "\n\n", txt)
     return txt.strip()
-
-
-def format_news_date(iso: str) -> str:
-    try:
-        return datetime.fromisoformat(iso).strftime("%d %b %Y")
-    except Exception:
-        return iso
-
-
-def relative_age(ts: float | None, now: float | None = None) -> str:
-    """Human age of an epoch timestamp: "just now", "5m ago", "3h ago",
-    "3d ago". Empty string when there is no timestamp (never fetched)."""
-    if not ts:
-        return ""
-    now = now if now is not None else datetime.now().timestamp()
-    delta = max(0, int(now - ts))
-    if delta < 60:
-        return "just now"
-    if delta < 3600:
-        return f"{delta // 60}m ago"
-    if delta < 86400:
-        return f"{delta // 3600}h ago"
-    return f"{delta // 86400}d ago"

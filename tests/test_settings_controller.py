@@ -146,12 +146,7 @@ def _log_texts(events):
 # ── first-run flags ────────────────────────────────────────────────────────
 
 
-def test_first_run_flags_initialized(cfg, monkeypatch, dispatcher):
-    # Pin the predicate off: on Windows hosts can_manage_antivirus() is
-    # True by default, which would raise first_run_av_pending.
-    monkeypatch.setattr(
-        sc.platform_support, "can_manage_antivirus", lambda: False
-    )
+def test_first_run_flags_initialized(cfg, dispatcher):
     c = SettingsController(
         dispatcher,
         _FakeUpdater(),
@@ -160,8 +155,6 @@ def test_first_run_flags_initialized(cfg, monkeypatch, dispatcher):
         _FakeNews(),
     )
     assert c.state.first_run is True
-    assert c.state.first_run_verify_pending is True
-    assert c.state.first_run_av_pending is False  # can_manage_antivirus → off
 
 
 # ── strict game-folder confirmation ────────────────────────────────────
@@ -211,20 +204,17 @@ def test_client_updates_default_to_enabled(cfg, fakes):
         fakes.dispatcher, fakes.updater, fakes.mods, fakes.addons, fakes.news
     )
     assert c.client_update_enabled is True
-    assert c.state.first_run_verify_pending is True
 
 
-def test_client_updates_setting_persists_and_controls_first_run(cfg, fakes):
+def test_client_updates_setting_persists(cfg, fakes):
     c = SettingsController(
         fakes.dispatcher, fakes.updater, fakes.mods, fakes.addons, fakes.news
     )
     c.set_client_update_enabled(False)
     assert cfg["client_update_enabled"] is False
     assert c.client_update_enabled is False
-    assert c.state.first_run_verify_pending is False
     c.set_client_update_enabled(True)
     assert cfg["client_update_enabled"] is True
-    assert c.state.first_run_verify_pending is True
 
 
 # ── umu-launcher settings ─────────────────────────────────────────────────
@@ -382,21 +372,6 @@ def test_resolve_umu_binary_prefers_override(cfg, fakes, monkeypatch):
     assert c.resolve_umu_binary() == "/usr/bin/umu-run"
 
 
-def test_first_run_av_pending_on_windows(cfg, monkeypatch, dispatcher):
-    monkeypatch.setattr(
-        sc.platform_support, "can_manage_antivirus", lambda: True
-    )
-    c = SettingsController(
-        dispatcher,
-        _FakeUpdater(),
-        _FakeMods(),
-        _FakeAddons(),
-        _FakeNews(),
-    )
-    assert c.state.first_run is True
-    assert c.state.first_run_av_pending is True
-
-
 # ── set_path ───────────────────────────────────────────────────────────────
 
 
@@ -438,8 +413,6 @@ def test_set_path_resets_for_new_folder(
     assert fakes.mods.resets == 1
     assert fakes.addons.resets == 1
     assert fakes.news.invalidate_calls == 1
-    assert controller.state.first_run_verify_pending is False
-    assert controller.state.first_run_av_pending is False
     events = controller._dispatcher.drain()
     assert any("Game folder changed" in t for t in _log_texts(events))
 
@@ -489,23 +462,6 @@ def test_set_path_rejected_while_update_running(
 # ── AV exclusion gating ────────────────────────────────────────────────────
 
 
-def test_should_prompt_av_reflects_platform(controller, monkeypatch):
-    monkeypatch.setattr(
-        sc.platform_support, "can_manage_antivirus", lambda: True
-    )
-    assert controller.should_prompt_av() is True
-    monkeypatch.setattr(
-        sc.platform_support, "can_manage_antivirus", lambda: False
-    )
-    assert controller.should_prompt_av() is False
-
-
-def test_av_prompt_dismissed_clears_pending(controller):
-    controller.state.first_run_av_pending = True
-    controller.av_prompt_dismissed()
-    assert controller.state.first_run_av_pending is False
-
-
 def test_allow_through_antivirus_off_windows_posts_error(
     controller, monkeypatch
 ):
@@ -538,9 +494,7 @@ def test_allow_through_antivirus_on_windows(controller, monkeypatch):
         ctypes, "windll", SimpleNamespace(shell32=shell), raising=False
     )
     controller.state.path = "C:/Games/VanillaWoW"
-    controller.state.first_run_av_pending = True
     controller.allow_through_antivirus()
-    assert controller.state.first_run_av_pending is False
     assert shell.calls
     script = _decoded_av_script(shell.calls[0][3])
     assert "Add-MpPreference -ExclusionPath $p" in script

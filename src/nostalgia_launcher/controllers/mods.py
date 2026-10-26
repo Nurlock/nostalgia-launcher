@@ -1,10 +1,13 @@
 """Mods panel controller.
 
-Owns the MODS-panel business logic: the background latest-version fetch, the
-update-available count, the pending checkbox changes, and the
-install/uninstall/update worker. Publishes snapshots as ModsLoaded and the
-worker outcome as OperationFinished on the shared EventDispatcher; the Qt
-Mods panel renders them. No GUI toolkit.
+Owns the MODS-panel business logic for community mods: the background
+latest-version fetch, the update-available count, the pending checkbox
+changes, and the install/uninstall/update worker. Server-managed
+(manifest-bundled) entries never reach this layer — ``mods_registry``
+excludes them and the standard client update owns them. Publishes
+snapshots as ModsLoaded and the worker outcome as OperationFinished
+on the shared EventDispatcher; the Qt Mods panel renders them. No
+GUI toolkit.
 """
 
 from __future__ import annotations
@@ -85,6 +88,8 @@ class ModsController:
         """
 
         def worker():
+            from ..services import manifest as _manifest
+
             latest = {}
             try:
                 registry = mods.mods_registry(force=mods.catalog_is_stale())
@@ -94,6 +99,10 @@ class ModsController:
                 except Exception:
                     registry = []
             for mod in registry:
+                if _manifest.is_server_managed(mod):
+                    # No version lookup for server-managed entries —
+                    # the UPDATE tab owns their staleness.
+                    continue
                 try:
                     v = mods.fetch_mod_latest_version_cached(mod)
                 except Exception:
@@ -107,6 +116,26 @@ class ModsController:
         threading.Thread(target=worker, daemon=True).start()
 
     def toggle(self, mod_id: str, enabled: bool):
+        """Record a pending checkbox change for the mod.
+
+        The manage tab is select-to-uninstall: a tick arrives as
+        ``enabled=False`` (staged for removal); unticking clears the
+        stage via ``pending.pop`` in the tab glue.
+        """
+        from ..services import manifest as _manifest
+
+        mod = next(
+            (m for m in mods.mods_registry() if m["id"] == mod_id), None
+        )
+        if mod is not None and _manifest.is_server_managed(mod):
+            self._dispatcher.post(
+                LogMessage(
+                    "Server-managed mod — updated via the UPDATE tab, "
+                    "not here.\n",
+                    "err",
+                )
+            )
+            return
         self.state.pending.setdefault(mod_id, ModPending()).enabled = enabled
 
     def reload_catalog(self) -> bool:
@@ -159,24 +188,6 @@ class ModsController:
         self._dispatcher.post(ModsLoaded(self.state))
         return None
 
-    def action_for(self, mod_id: str) -> str | None:
-        """'retry' when the mod is in an error state, 'update' when a newer
-        version is available, else None."""
-        rec = self.state.records.get(mod_id)
-        if rec is not None and rec.error:
-            return "retry"
-        mod = next(
-            (m for m in mods.mods_registry() if m["id"] == mod_id), None
-        )
-        if mod is None:
-            return None
-        live = {"latest_version": self.state.latest_versions.get(mod_id)}
-        if mods.mod_update_available(
-            mod, self._state_dict(mod_id) or {}, live
-        ):
-            return "update"
-        return None
-
     def apply(self, only_mod_id: str | None = None) -> bool:
         if self._busy:
             return False
@@ -195,50 +206,6 @@ class ModsController:
     def invalidate(self):
         """Drop the cached latest versions; the next load refetches."""
         self.state.latest_versions = {}
-
-    def apply_essential_mods(self) -> bool:
-        """Install every required mod not already present. Returns True when
-        an install actually started (a client is present and at least one
-        required mod is missing). An explicit user opt-out (an enabled=False
-        record) always wins: the catalog policy never force-reinstalls a mod
-        the user turned off."""
-        if self._busy:
-            return False
-        out = (self._get_out_dir() or "").strip()
-        from ..core.filesystem import game_executable_exists
-
-        if not out or not game_executable_exists(out):
-            return False
-        mods_cfg = config_store.load_config().get("mods", {})
-        pending = False
-        for mod in mods.mods_registry():
-            if mod.get("installation") != "required":
-                continue
-            state = mods_cfg.get(mod["id"], {})
-            if state.get("enabled") is False:
-                continue  # user opted out — liberty beats policy
-            if state.get(
-                "installed_version"
-            ) and mods.mod_installed_files_present(mod, out):
-                continue  # already installed
-            self.toggle(mod["id"], True)
-            pending = True
-        if not pending:
-            return False
-        self._dispatcher.post(
-            LogMessage("\nInstalling required mods...\n", "acct")
-        )
-        return self.apply()
-
-    def remove_unknown(self, name: str):
-        """Uninstall a detected-but-untracked mod (a dlls.txt entry no catalog
-        mod claims) straight from the filesystem, then republish the panel."""
-        out = (self._get_out_dir() or "").strip()
-        if not out:
-            return
-        mods.remove_unknown_mod(out, name)
-        self.state.records, self.state.unknown = self._load_records()
-        self._dispatcher.post(ModsLoaded(self.state))
 
     def reset(self):
         """Clear pending changes and drop cached versions (a game-folder
@@ -330,12 +297,16 @@ class ModsController:
         }
 
     def _refresh_updates_count(self):
+        from ..services import manifest as _manifest
+
         try:
             registry = mods.mods_registry()
         except Exception:
             registry = []
         count = 0
         for mod in registry:
+            if _manifest.is_server_managed(mod):
+                continue
             state = self._state_dict(mod["id"])
             if state is None or state.get("error"):
                 continue
@@ -368,6 +339,14 @@ class ModsController:
             for mod in ordered:
                 mid = mod["id"]
                 if only_mod_id is not None and mid != only_mod_id:
+                    continue
+                from ..services import manifest as _manifest
+
+                if _manifest.is_server_managed(mod):
+                    # Server-managed entries are owned by the standard
+                    # client update (verify → stale set → stage
+                    # download). The MODS tab never writes them — not
+                    # even a targeted retry.
                     continue
                 state = mods_cfg.get(mid, {})
 

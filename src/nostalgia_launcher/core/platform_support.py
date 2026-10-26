@@ -4,10 +4,6 @@ import os
 import subprocess
 import sys
 
-from platformdirs import (
-    PlatformDirs,  # noqa: F401 - Linux XDG logic mirrors PlatformDirs to respect fake_platform in tests
-)
-
 from .process_env import clean_system_env
 
 _UMU_PROBE = None

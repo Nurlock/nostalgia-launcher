@@ -1,56 +1,39 @@
 name: Tests
 
-# Reusable quality gates shared by ci.yml (push/PR) and release.yml (tag
-# builds): ruff lint/format plus the test suite on every OS we ship for.
+# Reusable per-OS quality gate shared by ci.yml (push/PR) and release.yml
+# (tag builds): ruff lint/format, pyright, plus the test suite.
+#
+# Takes an `os` input so release.yml can gate each platform build on its
+# own OS tests only (linux tests -> linux build, ...), instead of one
+# aggregate job where a Windows failure blocks the Linux AppImage.
+# Lint/format/typecheck run only where `lint: true` (the Ubuntu callers).
 #
 # e2e tests (real WoW client under context/) are skipped here and run only
 # locally via `RUN_E2E=1 uv run pytest -m e2e`.
 
 on:
   workflow_call:
+    inputs:
+      os:
+        description: Runner image for this gate.
+        required: true
+        type: string
+      lint:
+        description: Run ruff + pyright before the test suite.
+        default: false
+        required: false
+        type: boolean
 
 jobs:
-  ruff:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      # setup-uv stopped publishing major tags in v8 — pin the full version.
-      - uses: astral-sh/setup-uv@v10.3.2
-        with:
-          enable-cache: true
-      - name: Sync dependencies
-        run: uv sync --dev
-      - name: Ruff lint
-        # github output format surfaces findings inline in the run view.
-        run: uv run ruff check --output-format=github .
-      - name: Ruff format check
-        run: uv run ruff format --check .
-
-  pyright:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.3.2
-        with:
-          enable-cache: true
-      - name: Sync dependencies
-        run: uv sync --dev
-      - name: Pyright type check
-        run: uv run pyright
-
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  quality:
+    runs-on: ${{ inputs.os }}
     steps:
       - uses: actions/checkout@v7
       # setup-uv stopped publishing major tags in v8 — pin the full version.
       - name: Install Qt runtime dependencies (Linux)
         if: runner.os == 'Linux'
         # qt6-declarative-dev-tools provides qmllint so the lint test executes instead of skipping.
-        run: sudo apt-get update && sudo apt-get install -y libegl1 qt6-declarative-dev-tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 qt6-declarative-dev-tools
       - uses: astral-sh/setup-uv@v10.3.2
         with:
           enable-cache: true
@@ -61,6 +44,16 @@ jobs:
           python-version: "3.12"
       - name: Sync dependencies
         run: uv sync --dev
+      - name: Ruff lint
+        if: inputs.lint
+        # github output format surfaces findings inline in the run view.
+        run: uv run ruff check --output-format=github .
+      - name: Ruff format check
+        if: inputs.lint
+        run: uv run ruff format --check .
+      - name: Pyright type check
+        if: inputs.lint
+        run: uv run pyright
       - name: Run the test suite
         # Qt tests force QT_QPA_PLATFORM=offscreen themselves, so they run
         # headless on all three OSes.

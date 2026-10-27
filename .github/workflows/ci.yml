@@ -11,5 +11,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests:
+  tests-ubuntu:
     uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      lint: true
+  tests-windows:
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: windows-latest
+  tests-macos:
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: macos-latest

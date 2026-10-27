@@ -40,8 +40,21 @@ env:
   LINUXDEPLOY_URL: https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 
 jobs:
-  tests:
+  # Per-OS gates: each platform build depends on its own OS tests only,
+  # so a red Windows suite doesn't hold up the Linux AppImage.
+  tests-ubuntu:
     uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      lint: true
+  tests-windows:
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: windows-latest
+  tests-macos:
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: macos-latest
 
   verify-tag:
     runs-on: ubuntu-latest
@@ -58,7 +71,7 @@ jobs:
           fi
 
   build-windows:
-    needs: [tests, verify-tag]
+    needs: [tests-windows, verify-tag]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -107,7 +120,7 @@ jobs:
           subject-path: artifacts/${{ env.STAGED_NAME }}
 
   build-linux:
-    needs: [tests, verify-tag]
+    needs: [tests-ubuntu, verify-tag]
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -157,7 +170,7 @@ jobs:
           subject-path: artifacts/${{ env.STAGED_NAME }}
 
   build-macos:
-    needs: [tests, verify-tag]
+    needs: [tests-macos, verify-tag]
     runs-on: macos-14
     permissions:
       contents: read

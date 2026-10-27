@@ -71,4 +71,4 @@ This project was inspired by Octo Updater by rebasedkon
 (<https://github.com/rebasedkon/octo-updater>).
 
 Nostalgia Launcher is maintained by Nurlock
-(<Nurlock@github.com/Nurlock>).
+(<https://github.com/Nurlock>).

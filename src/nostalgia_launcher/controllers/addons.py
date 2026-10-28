@@ -1273,8 +1273,9 @@ class AddonsController:
                 st_rec.source_type = "direct"
                 st_rec.download_url = url
             self._dispatcher.post(LogMessage(f"  ✓ Addon {folder} installed."))
+        shipped = {name.casefold() for name in installed}
         for folder in folders:
-            if folder not in installed:
+            if folder.casefold() not in shipped:
                 log(f"  {folder} is not shipped by {url} — left as is.", "dim")
                 st_rec = self.state.addons.get(folder)
                 if st_rec is not None and st_rec.status == "downloading":
@@ -1339,8 +1340,9 @@ class AddonsController:
                 st_rec.status = "upToDate"
                 st_rec.error = None
             self._dispatcher.post(LogMessage(f"  ✓ Addon {folder} installed."))
+        shipped = {name.casefold() for name in installed}
         for folder in folders:
-            if folder not in installed:
+            if folder.casefold() not in shipped:
                 log(
                     f"  {folder} is not shipped by {git} — left as is.",
                     "dim",

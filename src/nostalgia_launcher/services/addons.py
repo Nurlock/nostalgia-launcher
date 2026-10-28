@@ -839,11 +839,11 @@ def _install_archive_bytes(
         log(f"  Installed addon {folder}")
         return [folder]
     by_name = {name: prefix for name, prefix in discovered}
-    if folder not in by_name:
-        for _name in by_name:
-            if _name.casefold() == folder.casefold():
-                folder = _name  # TOC stem casing wins
-                break
+    lower = {name.casefold(): name for name in by_name}
+    if folder not in by_name and folder.casefold() in lower:
+        folder = lower[folder.casefold()]  # TOC stem casing wins
+    if wanted is not None:
+        wanted = [lower.get(w.casefold(), w) for w in wanted]
     if wanted:
         # Explicit multi-folder request (controller group install):
         # install each requested folder plus any co-shipped siblings

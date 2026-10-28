@@ -1184,6 +1184,33 @@ def test_install_normalizes_folder_to_toc_stem(tmp_path, monkeypatch):
     assert (dest / "core.lua").exists()
 
 
+def test_group_install_case_mismatch_installs_requested(tmp_path, monkeypatch):
+    """wanted in catalog casing still installs (no silent misreport)."""
+    client = tmp_path / "client"
+    payload = _pack_zip(
+        {
+            "repo-sha/pfQuest-Reborn/pfQuest-Reborn.toc": (
+                "## Interface: 11200\n## Title: pfQuest Reborn\ncore.lua\n"
+            ),
+            "repo-sha/pfQuest-Reborn/core.lua": "-- code",
+        }
+    )
+    monkeypatch.setattr(
+        addons._GIT_BACKEND, "fetch_archive", lambda url, sha: payload
+    )
+    out = addons.install_addon_files(
+        str(client),
+        "pfquest-reborn",
+        "https://github.com/a/pfquest-reborn",
+        "abcd" * 10,
+        wanted=["pfquest-reborn"],
+    )
+    assert out == ["pfQuest-Reborn"]
+    assert (
+        client / "Interface" / "AddOns" / "pfQuest-Reborn" / "core.lua"
+    ).exists()
+
+
 def test_addon_repo_names_caches_per_sha(tmp_path, monkeypatch):
     config_store.configure(
         str(tmp_path / "config.json"), str(tmp_path / "cache.json")

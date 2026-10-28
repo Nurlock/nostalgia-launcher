@@ -814,6 +814,7 @@ def test_install_addon_files_path_traversal_safe(tmp_path, monkeypatch):
     payload = _zip_bytes(
         {
             "x-master/ok.txt": "ok",
+            "x-master/x.toc": "## Title: x\n",
             "x-master/../../escape.txt": "evil",
         }
     )
@@ -1142,6 +1143,20 @@ def test_install_hollow_tree_missing_toc_files_raises(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="data.lua"):
         addons.install_addon_files(
             str(client), "Hollow", "https://github.com/a/hollow", "abcd" * 10
+        )
+
+
+
+def test_bare_unpack_without_toc_raises(tmp_path, monkeypatch):
+    """A zip with no .toc at all raises instead of installing a shell."""
+    client = tmp_path / "client"
+    payload = _pack_zip({"pack-sha/readme.txt": "hello"})
+    monkeypatch.setattr(
+        addons._GIT_BACKEND, "fetch_archive", lambda url, sha: payload
+    )
+    with pytest.raises(RuntimeError, match="no Empty.toc found"):
+        addons.install_addon_files(
+            str(client), "Empty", "https://github.com/a/empty", "abcd" * 10
         )
 
 

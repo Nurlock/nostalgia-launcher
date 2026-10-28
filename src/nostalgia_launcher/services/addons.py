@@ -23,6 +23,7 @@ import urllib.request
 from ..core import config_store as _config_store
 from ..core import launcher
 from ..core.config_store import load_config, update_config
+from ..core.filesystem import rmtree_force
 from ..core.constants import UA
 from ..core.log_sink import log
 from ..core.safety import https_url
@@ -827,9 +828,16 @@ def _install_archive_bytes(
             discovered = []
         flat = bool(discovered)
     if not discovered:
-        _sources_deploy.unpack_folder(
-            data, os.path.join(addons_path(client_dir), folder)
-        )
+        dest = os.path.join(addons_path(client_dir), folder)
+        _sources_deploy.unpack_folder(data, dest)
+        toc_path, _kind = find_toc_for_folder(dest, folder)
+        if toc_path is None:
+            rmtree_force(dest)
+            raise RuntimeError(
+                f"Installed {folder} but no {folder}.toc found — "
+                "the repo layout is not supported"
+            )
+        validate_toc_contents(dest)
         log(f"  Installed addon {folder}")
         return [folder]
     by_name = {name: prefix for name, prefix in discovered}

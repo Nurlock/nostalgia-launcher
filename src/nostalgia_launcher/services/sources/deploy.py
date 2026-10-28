@@ -131,6 +131,23 @@ def _resolve_inside(base: str, dest_rel: str) -> str:
         raise RuntimeError(f"Refusing unsafe install path: {dest_rel!r}")
     parent = os.path.dirname(dest)
     if parent:
+        base_real = os.path.realpath(base)
+        parent_real = os.path.realpath(parent)
+        if parent_real != base_real and not safe_destination(
+            parent_real, base_real
+        ):
+            raise RuntimeError(
+                f"Refusing unsafe install path (symlink parent): {dest_rel!r}"
+            )
+        os.makedirs(parent, exist_ok=True)
+    return dest
+    """Join + makedirs ``dest_rel`` under ``base``, refusing symlink-parent
+    escape (realpath containment; parent == base allowed)."""
+    dest = os.path.join(base, dest_rel)
+    if not safe_destination(dest, base):
+        raise RuntimeError(f"Refusing unsafe install path: {dest_rel!r}")
+    parent = os.path.dirname(dest)
+    if parent:
         os.makedirs(parent, exist_ok=True)
         parent_real = os.path.realpath(parent)
         if parent_real != os.path.realpath(base) and not safe_destination(
@@ -405,7 +422,8 @@ def unpack_flat_prefix(data: bytes, prefix: str, dest_root: str) -> None:
                 rel = os.path.join(*parts[len(wanted) :])
                 try:
                     target = _resolve_inside(tmp_root, rel)
-                except RuntimeError:
+                except RuntimeError as e:
+                    log(f"  Warning: skipping {info.filename}: {e}")
                     continue
                 with zf.open(info) as src, open(target, "wb") as dst:
                     shutil.copyfileobj(src, dst)
@@ -469,7 +487,8 @@ def unpack_prefix(data: bytes, prefix: str, dest_root: str) -> None:
                 rel = os.path.join(*parts[len(wanted) :])
                 try:
                     target = _resolve_inside(tmp_root, rel)
-                except RuntimeError:
+                except RuntimeError as e:
+                    log(f"  Warning: skipping {info.filename}: {e}")
                     continue
                 with zf.open(info) as src, open(target, "wb") as dst:
                     shutil.copyfileobj(src, dst)

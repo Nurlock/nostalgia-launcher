@@ -177,7 +177,7 @@ def safe_destination(path: str, base: str) -> bool:
     except (ValueError, OSError):
         return False
     try:
-        rel = os.path.relpath(path_abs, base_abs)
+        rel = os.path.relpath(path_real, base_real)
     except ValueError:
         return False
     if rel == ".":

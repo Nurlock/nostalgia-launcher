@@ -1124,7 +1124,6 @@ def test_install_missing_toc_raises(tmp_path, monkeypatch):
         )
 
 
-
 def test_install_hollow_tree_missing_toc_files_raises(tmp_path, monkeypatch):
     """An extracted tree whose .toc references absent files raises."""
     client = tmp_path / "client"
@@ -1132,7 +1131,7 @@ def test_install_hollow_tree_missing_toc_files_raises(tmp_path, monkeypatch):
         {
             "pack-sha/Hollow/Hollow.toc": (
                 "## Interface: 11200\n## Title: Hollow\n"
-                'core.lua\ndb\\data.lua\n'
+                "core.lua\ndb\\data.lua\n"
             ),
             "pack-sha/Hollow/core.lua": "-- code",
         }
@@ -1146,7 +1145,6 @@ def test_install_hollow_tree_missing_toc_files_raises(tmp_path, monkeypatch):
         )
 
 
-
 def test_bare_unpack_without_toc_raises(tmp_path, monkeypatch):
     """A zip with no .toc at all raises instead of installing a shell."""
     client = tmp_path / "client"
@@ -1158,6 +1156,32 @@ def test_bare_unpack_without_toc_raises(tmp_path, monkeypatch):
         addons.install_addon_files(
             str(client), "Empty", "https://github.com/a/empty", "abcd" * 10
         )
+
+
+def test_install_normalizes_folder_to_toc_stem(tmp_path, monkeypatch):
+    """pfquest-reborn installs as pfQuest-Reborn (TOC stem casing)."""
+    client = tmp_path / "client"
+    payload = _pack_zip(
+        {
+            "repo-sha/pfQuest-Reborn/pfQuest-Reborn.toc": (
+                "## Interface: 11200\n## Title: pfQuest Reborn\ncore.lua\n"
+            ),
+            "repo-sha/pfQuest-Reborn/core.lua": "-- code",
+        }
+    )
+    monkeypatch.setattr(
+        addons._GIT_BACKEND, "fetch_archive", lambda url, sha: payload
+    )
+    out = addons.install_addon_files(
+        str(client),
+        "pfquest-reborn",
+        "https://github.com/a/pfquest-reborn",
+        "abcd" * 10,
+    )
+    assert out == ["pfQuest-Reborn"]
+    dest = client / "Interface" / "AddOns" / "pfQuest-Reborn"
+    assert (dest / "pfQuest-Reborn.toc").exists()
+    assert (dest / "core.lua").exists()
 
 
 def test_addon_repo_names_caches_per_sha(tmp_path, monkeypatch):

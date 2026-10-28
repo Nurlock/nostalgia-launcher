@@ -23,8 +23,8 @@ import urllib.request
 from ..core import config_store as _config_store
 from ..core import launcher
 from ..core.config_store import load_config, update_config
-from ..core.filesystem import rmtree_force
 from ..core.constants import UA
+from ..core.filesystem import rmtree_force
 from ..core.log_sink import log
 from ..core.safety import https_url
 from ..core.security_http import read_capped, secure_urlopen
@@ -613,9 +613,7 @@ def toc_file_refs(toc_path: str) -> list[str]:
 
 def validate_toc_contents(dir_path: str) -> None:
     """Raise RuntimeError listing .toc-referenced files missing on disk."""
-    toc_path, _kind = find_toc_for_folder(
-        dir_path, os.path.basename(dir_path)
-    )
+    toc_path, _kind = find_toc_for_folder(dir_path, os.path.basename(dir_path))
     if toc_path is None:
         return
     missing = [
@@ -841,6 +839,11 @@ def _install_archive_bytes(
         log(f"  Installed addon {folder}")
         return [folder]
     by_name = {name: prefix for name, prefix in discovered}
+    if folder not in by_name:
+        for _name in by_name:
+            if _name.casefold() == folder.casefold():
+                folder = _name  # TOC stem casing wins
+                break
     if wanted:
         # Explicit multi-folder request (controller group install):
         # install each requested folder plus any co-shipped siblings

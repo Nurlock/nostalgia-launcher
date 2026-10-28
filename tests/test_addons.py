@@ -1123,6 +1123,28 @@ def test_install_missing_toc_raises(tmp_path, monkeypatch):
         )
 
 
+
+def test_install_hollow_tree_missing_toc_files_raises(tmp_path, monkeypatch):
+    """An extracted tree whose .toc references absent files raises."""
+    client = tmp_path / "client"
+    payload = _pack_zip(
+        {
+            "pack-sha/Hollow/Hollow.toc": (
+                "## Interface: 11200\n## Title: Hollow\n"
+                'core.lua\ndb\\data.lua\n'
+            ),
+            "pack-sha/Hollow/core.lua": "-- code",
+        }
+    )
+    monkeypatch.setattr(
+        addons._GIT_BACKEND, "fetch_archive", lambda url, sha: payload
+    )
+    with pytest.raises(RuntimeError, match="data.lua"):
+        addons.install_addon_files(
+            str(client), "Hollow", "https://github.com/a/hollow", "abcd" * 10
+        )
+
+
 def test_addon_repo_names_caches_per_sha(tmp_path, monkeypatch):
     config_store.configure(
         str(tmp_path / "config.json"), str(tmp_path / "cache.json")

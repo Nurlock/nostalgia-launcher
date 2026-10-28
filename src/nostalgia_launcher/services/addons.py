@@ -592,6 +592,45 @@ def find_toc_for_folder(
     return None, "ambiguous"
 
 
+def toc_file_refs(toc_path: str) -> list[str]:
+    """File entries listed in a .toc (non-directive, non-blank lines)."""
+    try:
+        with open(toc_path, encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except OSError:
+        return []
+    if content.startswith("\ufeff"):
+        content = content[1:]
+    refs = []
+    for line in content.splitlines():
+        line = line.strip().replace("\\", "/")
+        if not line or line.startswith("#"):
+            continue
+        refs.append(line)
+    return refs
+
+
+def validate_toc_contents(dir_path: str) -> None:
+    """Raise RuntimeError listing .toc-referenced files missing on disk."""
+    toc_path, _kind = find_toc_for_folder(
+        dir_path, os.path.basename(dir_path)
+    )
+    if toc_path is None:
+        return
+    missing = [
+        r
+        for r in toc_file_refs(toc_path)
+        if not os.path.isfile(os.path.join(dir_path, *r.split("/")))
+    ]
+    if missing:
+        raise RuntimeError(
+            f"Installed {os.path.basename(dir_path)} but "
+            f"{len(missing)} file(s) listed in "
+            f"{os.path.basename(toc_path)} are missing: "
+            + ", ".join(sorted(missing)[:5])
+        )
+
+
 # In-memory TOC cache keyed by absolute .toc path: {path: (mtime_ns,
 # size, toc)}. Parsing is cheap but rescans (tab switches, retries,
 # settings reloads) re-read every file; unchanged files are served from
@@ -844,6 +883,7 @@ def _install_archive_bytes(
                 os.path.join(addons_path(client_dir), name),
             )
         log(f"  Installed addon {name}")
+        validate_toc_contents(os.path.join(addons_path(client_dir), name))
         installed_names.append(name)
     if wanted:
         # Group install: verify only folders actually shipped by the
@@ -863,6 +903,8 @@ def _install_archive_bytes(
         return installed_names
     if folder in by_name or any(p == "" for _n, p in discovered):
         # Already renamed above into `folder` and verified there.
+        for name in installed_names:
+            validate_toc_contents(os.path.join(addons_path(client_dir), name))
         return installed_names
     # contains-dirs repo that does not ship the folder, and no pack
     # fallback requested: the catalog row names the wrong install

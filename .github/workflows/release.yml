@@ -101,6 +101,10 @@ jobs:
         run: |
           uv run python packaging/fetch-7z-windows.py
           test -f packaging/vendor/windows/7zr.exe
+      - name: Fetch wireproxy sidecar (Windows)
+        run: |
+          uv run python packaging/fetch-wireproxy.py
+          test -f packaging/vendor/wireproxy/wireproxy.exe
       - name: Build (Windows)
         run: uv run pyinstaller --noconfirm --clean NostalgiaLauncher.spec
       - name: Stage artifact
@@ -151,6 +155,10 @@ jobs:
           echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
       - name: Sync dependencies
         run: uv sync --dev
+      - name: Fetch wireproxy sidecar (Linux)
+        run: |
+          uv run python packaging/fetch-wireproxy.py
+          test -f packaging/vendor/wireproxy/wireproxy-linux
       - name: Build AppImage (Linux)
         run: ./packaging/linux/build-appimage.sh
       - name: Stage artifact
@@ -206,6 +214,10 @@ jobs:
         run: |
           uv run python packaging/fetch-7z-macos.py
           test -f packaging/vendor/macos/7zz
+      - name: Fetch wireproxy sidecar (macOS)
+        run: |
+          uv run python packaging/fetch-wireproxy.py
+          test -f packaging/vendor/wireproxy/wireproxy-macos
 
       - name: Build universal2 DMG (macOS)
         run: ./packaging/macos/build-dmg.sh

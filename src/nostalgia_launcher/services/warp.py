@@ -19,7 +19,12 @@ WARP_ENDPOINT = "engage.cloudflareclient.com:2408"
 
 
 def _bundled_names() -> tuple:
-    return ("wireproxy.exe",) if os.name == "nt" else ("wireproxy",)
+    """Staged sidecar name for this platform (see fetch-wireproxy.py)."""
+    if os.name == "nt":
+        return ("wireproxy.exe",)
+    if sys.platform == "darwin":
+        return ("wireproxy-macos", "wireproxy")
+    return ("wireproxy-linux", "wireproxy")
 
 
 def _bundled_wireproxy() -> str:
@@ -149,12 +154,11 @@ def register_device(urlopen=None, timeout: float = 15.0) -> dict:
     """Anonymous WARP registration (same call `wgcf register` makes).
 
     No account, email, or user input — Cloudflare mints a random device
-    identity for the generated pubkey. Returns the private key plus the
-    assigned addresses/peer (standard constants as fallback). Raises on
-    network or shape errors so callers fall back to a direct launch.
-    # shortcut: response endpoint/peer parsed but standard constants
-    # reused for the tunnel; switch when a region needs the response values.
+    identity for the generated pubkey. Returns the private key and the
+    assigned address. Raises on network or shape errors so callers fall
+    back to a direct launch.
     """
+
     from ..core.security_http import read_capped, secure_urlopen
 
     opener = urlopen or secure_urlopen
@@ -184,35 +188,10 @@ def register_device(urlopen=None, timeout: float = 15.0) -> dict:
         data = json.loads(read_capped(r, 64 * 1024))
     if not isinstance(data, dict):
         raise RuntimeError("WARP registration returned a broken payload")
-    cfg = data.get("config") or {}
-    addrs = (cfg.get("interface") or {}).get("addresses") or {}
-    peers = cfg.get("peers") or []
-    peer = peers[0] if peers else (cfg.get("peer") or {})
-    if not isinstance(peer, dict):
-        peer = {}
-    ep = peer.get("endpoint") or {}
-    if not isinstance(ep, dict):
-        ep = {}
-    host = ep.get("host") or ep.get("v4") or ""
-    ports = ep.get("ports") or [2408]
-    if not host:
-        endpoint = WARP_ENDPOINT
-    elif ":" not in host:
-        endpoint = f"{host}:{ports[0]}"  # hostname/IPv4 without port
-    elif host.startswith("[") or (
-        host.count(":") == 1 and host.rsplit(":", 1)[-1].isdigit()
-    ):
-        endpoint = host  # already host:port
-    else:
-        endpoint = f"[{host}]:{ports[0]}"  # bare IPv6
-    return {
-        "private_key": private_b64,
-        "address_v4": _cidr(addrs.get("v4") or "172.16.0.2/32"),
-        "address_v6": addrs.get("v6") or "",
-        "peer_endpoint": endpoint,
-        "peer_public_key": peer.get("public_key") or WARP_PEER_PUBLIC_KEY,
-        "device_id": data.get("id") or "",
-    }
+    addrs = (data.get("config") or {}).get("interface", {})
+    addrs = (addrs or {}).get("addresses") or {}
+    v4 = addrs.get("v4") or "172.16.0.2/32"
+    return {"private_key": private_b64, "address_v4": _cidr(v4)}
 
 
 def warp_key_from_env() -> str:

@@ -52,6 +52,9 @@ else:
         "WARNING: wireproxy not staged (run packaging/fetch-wireproxy.py); "
         "build falls back to PATH"
     )
+_wireproxy_license = os.path.join("packaging", "vendor", "wireproxy", "LICENSE")
+if os.path.isfile(_wireproxy_license):
+    datas.append((_wireproxy_license, "licenses"))
 if os.path.isfile(_seven_z_license):
     datas.append((_seven_z_license, "licenses"))
 else:

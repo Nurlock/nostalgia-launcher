@@ -1479,9 +1479,9 @@ def test_launch_game_linux_warp_failure_launches_directly(
             launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
         ),
     )
+    started = Mock(side_effect=RuntimeError("no binary"))
     monkeypatch.setattr(
-        "nostalgia_launcher.services.warp.start_tunnel",
-        Mock(side_effect=RuntimeError("no binary")),
+        "nostalgia_launcher.services.warp.start_tunnel", started
     )
     monkeypatch.setattr(
         "nostalgia_launcher.services.umu.compute_wine_prefix",
@@ -1493,6 +1493,7 @@ def test_launch_game_linux_warp_failure_launches_directly(
     assert ok is True
     assert launched["kw"]["extra_env"] is None
     assert controller._warp_tunnel is None
+    assert started.call_count == 2  # one retry on fresh ports
 
 
 def test_launch_game_windows_passes_warp_env(
@@ -1529,6 +1530,7 @@ def test_launch_game_windows_passes_warp_env(
     assert ok is True
     _, kwargs = popen.call_args
     assert kwargs["env"]["ALL_PROXY"] == "socks5h://127.0.0.1:18080"
+    assert "NOSTALGIA_WARP_KEY" not in kwargs["env"]  # proxies only
 
 
 def test_launch_game_linux_config_toggle_injects_warp_proxy(
@@ -1619,7 +1621,10 @@ def test_launch_game_linux_toggle_auto_registers_key(
     )
     monkeypatch.setattr(
         "nostalgia_launcher.services.warp.register_device",
-        lambda: {"private_key": "AUTOKEY=", "address_v4": "172.16.0.2/32"},
+        lambda timeout=8.0: {
+            "private_key": "AUTOKEY=",
+            "address_v4": "172.16.0.2/32",
+        },
     )
     monkeypatch.setattr(
         "nostalgia_launcher.services.umu.compute_wine_prefix",
@@ -1685,6 +1690,67 @@ def test_launch_game_linux_register_failure_launches_directly(
         if isinstance(e, LogMessage)
     ]
     assert any("auto-register failed" in t for t in texts)
+
+
+def test_launch_game_warp_key_persist_failure_warns(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    controller_cfg["launch"] = {"warp_enabled": True}
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.delenv("NOSTALGIA_WARP", raising=False)
+    monkeypatch.delenv("NOSTALGIA_WARP_KEY", raising=False)
+    monkeypatch.setattr(
+        uc,
+        "update_config",
+        Mock(side_effect=OSError("read-only")),
+    )
+    launched = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.launch",
+        lambda out_dir, exe, **kw: (
+            launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
+        ),
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel",
+        lambda key, address="172.16.0.2/32": {
+            "proc": Mock(),
+            "cfg_path": "",
+            "proxies": {"ALL_PROXY": "x"},
+        },
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.register_device",
+        lambda timeout=8.0: {"private_key": "AUTOKEY=", "address_v4": "a"},
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.compute_wine_prefix",
+        lambda: "/prefix",
+    )
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    assert launched["kw"]["extra_env"] == {"ALL_PROXY": "x"}
+    assert "warp_key" not in controller_cfg["launch"]
+    texts = [
+        e.text
+        for e in controller._dispatcher.drain()
+        if isinstance(e, LogMessage)
+    ]
+    assert any("not saved" in t for t in texts)
+    controller._stop_warp()
 
 
 def test_launch_game_warp_lifecycle_reaches_log_file(

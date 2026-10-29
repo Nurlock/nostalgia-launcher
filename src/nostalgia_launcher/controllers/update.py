@@ -129,6 +129,18 @@ def _store_warp_key(key: str):
     return _mutate
 
 
+def _restrict_config_perms() -> None:
+    """Best-effort owner-only perms on the config holding the WARP key."""
+    try:
+        from ..core import config_store
+
+        path = getattr(config_store, "config_file", "")
+        if path and os.path.isfile(path):
+            os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 class UpdateController:
     """Owns the verify/update flow; speaks to the UI only through events.
 
@@ -524,7 +536,7 @@ class UpdateController:
         if not key:
             self._announce("Registering anonymous WARP device…\n", "dim")
             try:
-                reg = warp.register_device()
+                reg = warp.register_device(timeout=8.0)
             except Exception as e:
                 self._announce(
                     f"WARP auto-register failed: {e} — launching directly.\n",
@@ -536,7 +548,12 @@ class UpdateController:
             try:
                 update_config(_store_warp_key(key))
             except Exception:
-                pass  # key still works for this session
+                self._announce(
+                    "WARP key not saved — will re-register next launch.\n",
+                    "err",
+                )
+            else:
+                _restrict_config_perms()
             self._announce("WARP device registered.\n", "ok")
         if cfg.get("close_on_launch"):
             self._announce(
@@ -545,14 +562,22 @@ class UpdateController:
                 "err",
             )
             return {}
-        try:
-            self._warp_tunnel = warp.start_tunnel(key, address)
-        except Exception as e:
+        handle: dict | None = None
+        last_err: Exception | None = None
+        for _ in range(2):  # fresh ports per try; one retry on collision
+            try:
+                handle = warp.start_tunnel(key, address)
+                break
+            except Exception as e:
+                last_err = e
+        if handle is None:
             self._announce(
-                f"WARP tunnel failed to start: {e} — launching directly.\n",
+                f"WARP tunnel failed to start: {last_err} — "
+                "launching directly.\n",
                 "err",
             )
             return {}
+        self._warp_tunnel = handle
         self._announce("WARP tunnel started.\n", "ok")
         return self._warp_tunnel["proxies"]
 
@@ -611,6 +636,8 @@ class UpdateController:
             remove_wdb(client_dir)
         proxies = self._maybe_start_warp(cfg)
         game_env = dict(os.environ, **proxies) if proxies else None
+        if game_env is not None:
+            game_env.pop("NOSTALGIA_WARP_KEY", None)  # proxies only
 
         try:
             flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(

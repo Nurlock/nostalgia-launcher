@@ -24,7 +24,7 @@ datas = pyside_datas + shiboken_datas + lt_datas + [
 ]
 binaries = pyside_binaries + shiboken_binaries + lt_binaries
 # wireproxy sidecar (opt-in WARP tunnel): staged by packaging/fetch-wireproxy.py.
-_wireproxy_bin = os.path.join("packaging", "vendor", "wireproxy", "wireproxy")
+_wireproxy_bin = os.path.join("packaging", "vendor", "wireproxy", "wireproxy-linux")
 if os.path.isfile(_wireproxy_bin):
     binaries.append((_wireproxy_bin, "."))
 else:
@@ -32,6 +32,9 @@ else:
         "WARNING: wireproxy not staged (run packaging/fetch-wireproxy.py); "
         "build falls back to PATH"
     )
+_wireproxy_license = os.path.join("packaging", "vendor", "wireproxy", "LICENSE")
+if os.path.isfile(_wireproxy_license):
+    datas.append((_wireproxy_license, "licenses"))
 hiddenimports = pyside_hiddenimports + shiboken_hiddenimports + lt_hiddenimports
 
 # The panels/dialogs are constructed by the Qt main window at runtime, so

@@ -394,6 +394,29 @@ def test_launch_forwards_extra_env(monkeypatch, tmp_path):
     assert kwargs["env"]["GAMEID"] == "umu-nostalgia-launcher"
 
 
+def test_launch_scrubs_warp_key_from_game_env(monkeypatch, tmp_path):
+    game = tmp_path / "game"
+    game.mkdir()
+    exe = game / "WoW.exe"
+    exe.write_text("")
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    popen = mock.Mock()
+    popen.return_value.pid = 7
+    monkeypatch.setattr(umu.subprocess, "Popen", popen)
+    monkeypatch.setattr(umu.os, "getpgid", lambda pid: 7, raising=False)
+    monkeypatch.setattr(umu, "find_umu", lambda: "/usr/bin/umu-run")
+
+    umu.launch(
+        str(game),
+        str(exe),
+        extra_env={"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+    )
+
+    _, kwargs = popen.call_args
+    assert "NOSTALGIA_WARP_KEY" not in kwargs["env"]
+    assert kwargs["env"]["ALL_PROXY"] == "socks5h://127.0.0.1:18080"
+
+
 # ── launch ──────────────────────────────────────────────────────────────
 
 

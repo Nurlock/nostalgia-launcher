@@ -139,12 +139,6 @@ def _reg_payload(**overrides):
         "id": "device-id",
         "config": {
             "interface": {"addresses": {"v4": "172.16.0.2", "v6": "::/0"}},
-            "peers": [
-                {
-                    "endpoint": {"v4": "162.159.192.1", "ports": [2408]},
-                    "public_key": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
-                }
-            ],
         },
     }
     body.update(overrides)
@@ -177,13 +171,12 @@ def test_register_device_parses_peers_shape():
 
     reg = warp.register_device(urlopen=fake_open)
     assert seen["url"].endswith("/reg")
+    assert set(reg) == {"private_key", "address_v4"}
     assert len(reg["private_key"]) == 44
     assert reg["address_v4"] == "172.16.0.2/32"
-    assert reg["peer_endpoint"] == "162.159.192.1:2408"
-    assert reg["device_id"] == "device-id"
 
 
-def test_register_device_falls_back_to_legacy_peer_shape():
+def test_register_device_uses_defaults_on_minimal_shape():
     import json
 
     class _Resp:
@@ -200,24 +193,11 @@ def test_register_device_falls_back_to_legacy_peer_shape():
             if self._done:
                 return b""
             self._done = True
-            return json.dumps(
-                {
-                    "id": "d",
-                    "config": {
-                        "interface": {"addresses": {"v4": "172.16.0.2/32"}},
-                        "peer": {
-                            "endpoint": {
-                                "host": "engage.cloudflareclient.com:2408"
-                            },
-                            "public_key": "k=",
-                        },
-                    },
-                }
-            ).encode()
+            return json.dumps({"id": "d", "config": {}}).encode()
 
     reg = warp.register_device(urlopen=lambda req, timeout=15: _Resp())
-    assert reg["peer_endpoint"] == "engage.cloudflareclient.com:2408"
-    assert reg["address_v6"] == ""
+    assert reg["address_v4"] == "172.16.0.2/32"
+    assert len(reg["private_key"]) == 44
 
 
 def test_register_device_rejects_broken_payload():

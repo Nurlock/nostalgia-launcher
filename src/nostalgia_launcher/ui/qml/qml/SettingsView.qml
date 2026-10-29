@@ -140,6 +140,13 @@ Dialog {
                         onToggled: if (settingsModel) settingsModel.setCloseOnLaunch(checked)
                     }
                     CheckBox {
+                        objectName: "qmlSettingsWarp"
+                        text: "Route game traffic via WARP tunnel"
+                        visible: settingsModel ? settingsModel.canLaunch : false
+                        checked: settingsModel ? settingsModel.warpEnabled : false
+                        onToggled: if (settingsModel) settingsModel.setWarpEnabled(checked)
+                    }
+                    CheckBox {
                         objectName: "qmlSettingsClientUpdate"
                         text: "Enable client updates"
                         checked: settingsModel ? settingsModel.clientUpdates : false

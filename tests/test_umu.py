@@ -372,6 +372,28 @@ def test_launch_omits_wayland_env_when_disabled(monkeypatch, tmp_path):
     assert "PROTON_ENABLE_WAYLAND" not in kwargs["env"]
 
 
+def test_launch_forwards_extra_env(monkeypatch, tmp_path):
+    game = tmp_path / "game"
+    game.mkdir()
+    exe = game / "WoW.exe"
+    exe.write_text("")
+    popen = mock.Mock()
+    popen.return_value.pid = 7
+    monkeypatch.setattr(umu.subprocess, "Popen", popen)
+    monkeypatch.setattr(umu.os, "getpgid", lambda pid: 7, raising=False)
+    monkeypatch.setattr(umu, "find_umu", lambda: "/usr/bin/umu-run")
+
+    umu.launch(
+        str(game),
+        str(exe),
+        extra_env={"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+    )
+
+    _, kwargs = popen.call_args
+    assert kwargs["env"]["ALL_PROXY"] == "socks5h://127.0.0.1:18080"
+    assert kwargs["env"]["GAMEID"] == "umu-nostalgia-launcher"
+
+
 # ── launch ──────────────────────────────────────────────────────────────
 
 
@@ -570,6 +592,29 @@ def test_game_process_alive_false_when_all_dead(monkeypatch):
     monkeypatch.setattr(umu.os, "listdir", lambda p: ["1"])
     monkeypatch.setattr(umu.os, "getpgid", lambda pid: 1, raising=False)
     assert umu.game_process_alive(4242, 9999) is False
+
+
+def test_game_process_alive_trusts_proc_over_recycled_pid(monkeypatch):
+    """Wrapper reaped but pid recycled by an unrelated process → gone.
+
+    ``poll()`` on our own handle is authoritative; the /proc pid check
+    must not resurrect it (stuck TERMINATE otherwise)."""
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(umu, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(umu.os, "listdir", lambda p: ["1"])
+    monkeypatch.setattr(umu.os, "getpgid", lambda pid: 1, raising=False)
+    proc = Mock()
+    proc.poll.return_value = 0
+    assert umu.game_process_alive(4242, 9999, proc) is False
+    proc.poll.return_value = None
+    assert umu.game_process_alive(4242, 9999, proc) is True
+
+
+def test_game_process_alive_proc_none_keeps_pid_fallback(monkeypatch):
+    """No handle (old callers) → legacy pid check still applies."""
+    monkeypatch.setattr(umu, "_pid_alive", lambda pid: pid == 4242)
+    assert umu.game_process_alive(4242, 9999) is True
 
 
 def test_pid_alive_treats_zombie_as_dead(monkeypatch, tmp_path):

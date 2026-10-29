@@ -218,6 +218,7 @@ def build_env(
     renderer: str = DEFAULT_RENDERER,
     wayland: bool = False,
     skip_builtin_dxvk: bool = False,
+    extra_env: dict | None = None,
 ) -> dict:
     """The env-var contract umu expects, layered over the current process env
     (WINEPREFIX, PROTONPATH, GAMEID, STORE) plus renderer/backend-specific
@@ -245,6 +246,8 @@ def build_env(
         env["PROTON_USE_WINED3D"] = "1"
     if wayland:
         env["PROTON_ENABLE_WAYLAND"] = "1"
+    if extra_env:
+        env.update(extra_env)
     return env
 
 
@@ -261,6 +264,7 @@ def launch(
     wayland: bool = False,
     skip_builtin_dxvk: bool = False,
     output_file: str = "",
+    extra_env: dict | None = None,
 ) -> tuple:
     """Launch `exe` (an absolute path to the client binary) via umu-run.
 
@@ -314,6 +318,7 @@ def launch(
                 renderer,
                 wayland=wayland,
                 skip_builtin_dxvk=skip_builtin_dxvk,
+                extra_env=extra_env,
             ),
             stdout=stdout,
             stderr=stderr,
@@ -362,15 +367,35 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def game_process_alive(pid: int, pgid: int) -> bool:
+def game_process_alive(pid: int, pgid: int, proc=None) -> bool:
     """Whether the launched game tree is still running.
 
     The umu-run wrapper (``pid``) is tracked via wait(); the game itself
     (Proton children in ``pgid``) may outlive or pre-decease it. Either
     side alive means the game session is live — check the wrapper first,
-    then scan the process group for survivors."""
+    then scan the process group for survivors.
+
+    When the caller's Popen handle is passed, its ``poll()`` is
+    authoritative for the wrapper: ``/proc`` pid checks alone can mistake
+    a recycled pid for the game and stick the footer on TERMINATE.
+    A reaped wrapper is never trusted — only group survivors count."""
+    if proc is not None:
+        try:
+            if proc.poll() is None:
+                return True
+        except Exception:
+            pass
+        return _group_alive(pid, pgid)
     if _pid_alive(pid):
         return True
+    return _group_alive(pid, pgid)
+
+
+def _group_alive(pid: int, pgid: int) -> bool:
+    """Whether any live process besides ``pid`` still sits in ``pgid``.
+
+    The launcher itself is excluded so a forked GUI child sharing the
+    group never reads as a running game."""
     try:
         for entry in os.listdir("/proc"):
             if not entry.isdigit():

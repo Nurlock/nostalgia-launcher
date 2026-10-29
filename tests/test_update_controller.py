@@ -987,6 +987,55 @@ def test_watch_game_exits_when_tree_dead_despite_hung_wait(
     assert controller.state.game_running is False
 
 
+def test_watch_game_tracks_sessions_past_old_cap(
+    controller, worker_cls, controller_cfg, wait_for_event, monkeypatch
+):
+    """A live tree keeps TERMINATE no matter how long the session runs.
+
+    The tree poll used to share a 5-minute deadline with the wrapper
+    wait, flipping long sessions to PLAY mid-game. Fake clock advances
+    1 s per read, so 1000 live polls simulate ~16 minutes."""
+    import time as _time
+
+    real_sleep = _time.sleep
+    polls = {"n": 0}
+    seen = {}
+    clock = {"t": 0.0}
+
+    def alive(pid, pgid):
+        polls["n"] += 1
+        if polls["n"] == 301:
+            seen["running"] = controller.state.game_running
+        return polls["n"] < 1000
+
+    def fake_monotonic():
+        clock["t"] += 1.0
+        return clock["t"]
+
+    proc = _FakeProc()
+    monkeypatch.setattr(controller, "_game_tree_alive", alive)
+    monkeypatch.setattr(_time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(_time, "sleep", lambda s: None)
+    controller.state.game_running = True
+    controller.state.game_pid = 1234
+    controller.state.game_pgid = 9999
+
+    thread = threading.Thread(
+        target=controller._watch_game, args=(proc, 1234), daemon=True
+    )
+    thread.start()
+    for _ in range(200):
+        if not thread.is_alive():
+            break
+        real_sleep(0.05)
+    assert not thread.is_alive()
+
+    assert polls["n"] >= 1000
+    assert seen.get("running") is True
+    assert GameExited(1234, None) in controller._dispatcher.drain()
+    assert controller.state.game_running is False
+
+
 def test_launch_game_linux_passes_skip_builtin_dxvk(
     controller,
     worker_cls,
@@ -1068,6 +1117,24 @@ def test_launch_game_linux_prefers_external_launcher(
         and "Launched ExampleLoader.exe via umu" in e.text
         for e in events
     )
+
+
+def test_game_tree_alive_passes_stored_proc(controller, monkeypatch):
+    """The service check gets the live Popen handle, not just the pid."""
+    seen = {}
+
+    def fake_alive(pid, pgid, proc=None):
+        seen.update(pid=pid, pgid=pgid, proc=proc)
+        return True
+
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.game_process_alive", fake_alive
+    )
+    sentinel = Mock()
+    controller._game_proc = sentinel
+
+    assert controller._game_tree_alive(1234, 9999) is True
+    assert seen == {"pid": 1234, "pgid": 9999, "proc": sentinel}
 
 
 def test_game_watcher_posts_exited_and_clears_state(
@@ -1335,6 +1402,343 @@ def test_launch_game_windows_captures_child_output(
     _, kwargs = popen.call_args
     assert kwargs["stdout"] == subprocess.PIPE
     assert kwargs["stderr"] == subprocess.STDOUT
+
+
+# ── WARP tunnel game launch ──────────────────────────────────────────
+
+
+def test_launch_game_linux_injects_warp_proxy(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.setenv("NOSTALGIA_WARP", "1")
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    launched = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.launch",
+        lambda out_dir, exe, **kw: (
+            launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
+        ),
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel",
+        lambda key, address_v4="172.16.0.2/32": {
+            "proc": Mock(),
+            "cfg_path": "",
+            "proxies": {"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+        },
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.compute_wine_prefix",
+        lambda: "/prefix",
+    )
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    assert launched["kw"]["extra_env"] == {
+        "ALL_PROXY": "socks5h://127.0.0.1:18080"
+    }
+    assert controller._warp_tunnel is not None
+    controller._stop_warp()
+    assert controller._warp_tunnel is None
+
+
+def test_launch_game_linux_warp_failure_launches_directly(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.setenv("NOSTALGIA_WARP", "1")
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    launched = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.launch",
+        lambda out_dir, exe, **kw: (
+            launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
+        ),
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel",
+        Mock(side_effect=RuntimeError("no binary")),
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.compute_wine_prefix",
+        lambda: "/prefix",
+    )
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    assert launched["kw"]["extra_env"] is None
+    assert controller._warp_tunnel is None
+
+
+def test_launch_game_windows_passes_warp_env(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: False)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.setenv("NOSTALGIA_WARP", "1")
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel",
+        lambda key, address_v4="172.16.0.2/32": {
+            "proc": Mock(),
+            "cfg_path": "",
+            "proxies": {"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+        },
+    )
+    popen = Mock()
+    popen.return_value.stdout = None
+    monkeypatch.setattr(subprocess, "Popen", popen)
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    _, kwargs = popen.call_args
+    assert kwargs["env"]["ALL_PROXY"] == "socks5h://127.0.0.1:18080"
+
+
+def test_launch_game_linux_config_toggle_injects_warp_proxy(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    controller_cfg["launch"] = {"warp_enabled": True}
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.delenv("NOSTALGIA_WARP", raising=False)
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    launched = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.launch",
+        lambda out_dir, exe, **kw: (
+            launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
+        ),
+    )
+    seen_key = {}
+
+    def fake_start(key, address_v4="172.16.0.2/32"):
+        seen_key["key"] = key
+        return {
+            "proc": Mock(),
+            "cfg_path": "",
+            "proxies": {"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+        }
+
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel", fake_start
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.compute_wine_prefix",
+        lambda: "/prefix",
+    )
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    assert seen_key == {"key": "PRIV="}
+    assert launched["kw"]["extra_env"] == {
+        "ALL_PROXY": "socks5h://127.0.0.1:18080"
+    }
+    controller._stop_warp()
+
+
+def test_launch_game_linux_toggle_auto_registers_key(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    controller_cfg["launch"] = {"warp_enabled": True}
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.delenv("NOSTALGIA_WARP", raising=False)
+    monkeypatch.delenv("NOSTALGIA_WARP_KEY", raising=False)
+    launched = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.launch",
+        lambda out_dir, exe, **kw: (
+            launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
+        ),
+    )
+    started = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel",
+        lambda key, address="172.16.0.2/32": (
+            started.update(key=key, address=address)
+            or {"proc": Mock(), "cfg_path": "", "proxies": {"ALL_PROXY": "x"}}
+        ),
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.register_device",
+        lambda: {"private_key": "AUTOKEY=", "address_v4": "172.16.0.2/32"},
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.compute_wine_prefix",
+        lambda: "/prefix",
+    )
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    assert started == {"key": "AUTOKEY=", "address": "172.16.0.2/32"}
+    assert controller_cfg["launch"]["warp_key"] == "AUTOKEY="
+    assert launched["kw"]["extra_env"] == {"ALL_PROXY": "x"}
+    controller._stop_warp()
+
+
+def test_launch_game_linux_register_failure_launches_directly(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    controller_cfg["launch"] = {"warp_enabled": True}
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.delenv("NOSTALGIA_WARP", raising=False)
+    monkeypatch.delenv("NOSTALGIA_WARP_KEY", raising=False)
+    launched = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.launch",
+        lambda out_dir, exe, **kw: (
+            launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
+        ),
+    )
+    started = Mock()
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel", started
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.register_device",
+        Mock(side_effect=RuntimeError("offline")),
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.compute_wine_prefix",
+        lambda: "/prefix",
+    )
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    assert launched["kw"]["extra_env"] is None
+    assert started.call_count == 0
+    assert "warp_key" not in controller_cfg["launch"]
+    texts = [
+        e.text
+        for e in controller._dispatcher.drain()
+        if isinstance(e, LogMessage)
+    ]
+    assert any("auto-register failed" in t for t in texts)
+
+
+def test_launch_game_warp_lifecycle_reaches_log_file(
+    controller,
+    worker_cls,
+    controller_cfg,
+    wait_for_event,
+    monkeypatch,
+    tmp_path,
+):
+    from nostalgia_launcher.core import log_sink
+
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    controller_cfg["launch"] = {"warp_enabled": True}
+    monkeypatch.setattr(uc, "can_launch_client", lambda: True)
+    monkeypatch.setattr(uc, "is_linux", lambda: True)
+    monkeypatch.setattr(uc, "remove_wdb", lambda *a: None)
+    monkeypatch.delenv("NOSTALGIA_WARP", raising=False)
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    log_path = str(tmp_path / "launcher.log")
+    monkeypatch.setattr(log_sink, "_sink_path", log_path)
+    launched = {}
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.launch",
+        lambda out_dir, exe, **kw: (
+            launched.update(exe=exe, kw=kw) or (1234, 9999, _FakeProc())
+        ),
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.start_tunnel",
+        lambda key, address_v4="172.16.0.2/32": {
+            "proc": Mock(),
+            "cfg_path": "",
+            "proxies": {"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+        },
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.warp.stop_tunnel", lambda h: None
+    )
+    monkeypatch.setattr(
+        "nostalgia_launcher.services.umu.compute_wine_prefix",
+        lambda: "/prefix",
+    )
+
+    ok, _ = controller.launch_game()
+
+    assert ok is True
+    with open(log_path, encoding="utf-8") as fh:
+        logged = fh.read()
+    assert "WARP tunnel started." in logged
+    assert "Launched WoW.exe via umu" in logged
 
 
 # ── child-process output capture ─────────────────────────────────────────

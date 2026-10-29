@@ -505,6 +505,27 @@ class SettingsController:
         )
         return self.state.config
 
+    def warp_enabled(self) -> bool:
+        """Whether the WARP tunnel is on: config toggle or env opt-in."""
+        if self.launch.warp_enabled:
+            return True
+        from ..services import warp as _warp
+
+        return _warp.warp_enabled_from_env()
+
+    def set_warp_enabled(self, enabled: bool) -> dict:
+        """Persist the WARP-tunnel game-launch toggle."""
+        self._set_launch(
+            lambda launch: launch.__setitem__("warp_enabled", bool(enabled))
+        )
+        self._dispatcher.post(
+            LogMessage(
+                f"WARP tunnel {'enabled' if enabled else 'disabled'}.\n",
+                "dim",
+            )
+        )
+        return self.state.config
+
     def open_client_folder(self):
         path = os.path.normpath(self.state.path.strip())
         if os.path.isdir(path):

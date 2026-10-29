@@ -323,6 +323,7 @@ class LaunchSettings:
     # Skip Proton's built-in DXVK so client-folder DLLs (e.g. a dxvk-gplasync
     # build installed via the MODS panel) are the ones Wine loads.
     umu_skip_builtin_dxvk: bool = False
+    warp_enabled: bool = False  # route the game launch via wireproxy WARP
 
     @classmethod
     def from_config(cls, cfg: dict) -> LaunchSettings:
@@ -341,4 +342,5 @@ class LaunchSettings:
             umu_skip_builtin_dxvk=bool(
                 data.get("umu_skip_builtin_dxvk", False)
             ),
+            warp_enabled=bool(data.get("warp_enabled", False)),
         )

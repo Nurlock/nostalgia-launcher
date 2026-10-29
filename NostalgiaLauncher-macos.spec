@@ -54,6 +54,15 @@ else:
         " (run packaging/fetch-7z-macos.py);"
         " the .app will fall back to system 7z"
     )
+# wireproxy sidecar (opt-in WARP tunnel): staged by packaging/fetch-wireproxy.py.
+_wireproxy_bin = os.path.join("packaging", "vendor", "wireproxy", "wireproxy")
+if os.path.isfile(_wireproxy_bin):
+    binaries.append((_wireproxy_bin, "."))
+else:
+    print(
+        "WARNING: wireproxy not staged (run packaging/fetch-wireproxy.py); "
+        "build falls back to PATH"
+    )
 _seven_z_license = os.path.join(
     "packaging", "vendor", "macos", "7-Zip-License.txt"
 )

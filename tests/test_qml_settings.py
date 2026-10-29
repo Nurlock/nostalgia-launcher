@@ -196,6 +196,17 @@ def test_checkbox_and_folder_actions(model):
     assert ("ad", True) in calls
 
 
+def test_warp_toggle_roundtrip(qapp):
+    m = SettingsModel()
+    m.set_snapshot_provider(lambda: _snapshot(warp_enabled=True))
+    m.refresh()
+    assert m.property("warpEnabled") is True
+    calls = []
+    m.set_handlers(warp_enabled=lambda b: calls.append(b))
+    m.setWarpEnabled(False)
+    assert calls == [False]
+
+
 # ── log model ─────────────────────────────────────────────────────────
 
 

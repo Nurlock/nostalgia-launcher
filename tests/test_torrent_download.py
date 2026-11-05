@@ -1351,6 +1351,7 @@ def test_verify_worker_skips_rescan_when_torrent_unchanged(
             "info_hash": "ih1",
             "url": "https://srv/client.torrent",
             "out_dir": os.path.abspath(str(client)),
+            "fingerprint": client_update._folder_fingerprint(str(client)),
             "stale": ["Data/old.bin"],
         }
     }
@@ -1424,6 +1425,7 @@ def test_verify_worker_skips_when_metadata_changes_but_identity_same(
             "info_hash": "ih1",
             "url": "https://srv/client.torrent",
             "out_dir": os.path.abspath(str(client)),
+            "fingerprint": client_update._folder_fingerprint(str(client)),
             "stale": ["Data/old.bin"],
         }
     }
@@ -1488,6 +1490,7 @@ def test_verify_worker_skips_when_url_rotates_same_snapshot(
             "info_hash": "ih1",
             "url": "https://srv/client.torrent",
             "out_dir": os.path.abspath(str(client)),
+            "fingerprint": client_update._folder_fingerprint(str(client)),
             "stale": [],
         }
     }

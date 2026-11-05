@@ -72,7 +72,7 @@ def backends(monkeypatch, tmp_path):
         lambda client: os.path.join(client, "Interface", "AddOns"),
     )
     monkeypatch.setattr(ac.addons, "is_allowed_git_url", lambda url: True)
-    monkeypatch.setattr(ac.shutil, "rmtree", lambda path: None)
+    monkeypatch.setattr(ac, "rmtree_force", lambda path: None)
 
 
 @pytest.fixture

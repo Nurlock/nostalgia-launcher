@@ -93,6 +93,49 @@ def _safe_identity(snapshot) -> dict | None:
         return None
 
 
+def _folder_fingerprint(out_dir: str) -> dict:
+    """Cheap on-disk fingerprint of the game folder for cache invalidation.
+
+    Keys: exe mtime/size plus a capped top-level file count. Returns ``{}``
+    when the folder is unreadable or the game exe is absent so a missing key
+    never crashes the reuse comparison (old caches simply re-scan).
+    """
+    try:
+        from ...core import launcher as _launcher
+        from ...core.filesystem import (
+            game_executable_exists as _gee,
+        )
+        from ...core.filesystem import (
+            pick_game_executable as _pge,
+        )
+
+        exe_name = _launcher.client_executable() or "WoW.exe"
+        if not _gee(out_dir, exe_name):
+            return {}
+        exe_path, _ = _pge(out_dir, None, exe_name=exe_name)
+        st = os.stat(exe_path)
+        file_count = 0
+        total_size = 0
+        try:
+            for _root, _dirs, files in os.walk(out_dir):
+                file_count += len(files)
+                for _fn in files:
+                    try:
+                        total_size += os.stat(os.path.join(_root, _fn)).st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        return {
+            "exe_mtime": st.st_mtime,
+            "exe_size": st.st_size,
+            "file_count": file_count,
+            "total_size": total_size,
+        }
+    except Exception:
+        return {}
+
+
 class VerifyWorker(WorkerBase):
     """Verify local files against the BitTorrent snapshot only."""
 
@@ -282,25 +325,40 @@ class VerifyWorker(WorkerBase):
                     "cached verdict.",
                     "dim",
                 )
-                assert isinstance(cached, dict)
-                _stale_raw = cached.get("stale", [])
-                if isinstance(_stale_raw, list):
-                    stale = sorted(s for s in _stale_raw if isinstance(s, str))
-                else:
-                    stale = []
-                self._cache[TORRENT_VALIDATION_CACHE_KEY] = {
-                    **identity,
-                    "url": src.torrent_locator,
-                    "out_dir": os.path.abspath(self.out_dir),
-                    "stale": stale,
-                }
-                self._persist_torrent_validation()
-                self.log(
-                    "[torrent] Validation verdict reused from cache.",
-                    "dim",
-                )
-                self._post_torrent_verdict(stale)
-                return True
+                # Fingerprint guard: a good cached verdict is stale if
+                # local files changed underneath it (e.g. AV quarantine)
+                # after a good verify — fall through to a full re-scan.
+                current_fp = _folder_fingerprint(self.out_dir)
+                cached_fp = cached.get("fingerprint")
+                if isinstance(cached_fp, dict) and cached_fp == current_fp:
+                    assert isinstance(cached, dict)
+                    _stale_raw = cached.get("stale", [])
+                    if isinstance(_stale_raw, list):
+                        stale = sorted(
+                            s for s in _stale_raw if isinstance(s, str)
+                        )
+                    else:
+                        stale = []
+                    self._cache[TORRENT_VALIDATION_CACHE_KEY] = {
+                        **identity,
+                        "url": src.torrent_locator,
+                        "out_dir": os.path.abspath(self.out_dir),
+                        "fingerprint": current_fp,
+                        "stale": stale,
+                    }
+                    self._persist_torrent_validation()
+                    self.log(
+                        "[torrent] Validation verdict reused from cache.",
+                        "dim",
+                    )
+                    self._post_torrent_verdict(stale)
+                    return True
+                if cached_fp is not None:
+                    self.log(
+                        "[torrent] local files changed — full re-scan",
+                        "dim",
+                    )
+                # fall through to the full re-scan below
             if old_hash and new_hash and old_hash != new_hash:
                 try:
                     remove_resume_data(old_hash)
@@ -404,6 +462,7 @@ class VerifyWorker(WorkerBase):
             **identity,
             "url": src.torrent_locator,
             "out_dir": os.path.abspath(self.out_dir),
+            "fingerprint": _folder_fingerprint(self.out_dir),
             "stale": sorted(stale),
         }
         self._persist_torrent_validation()
@@ -767,6 +826,7 @@ class UpdateWorker(WorkerBase):
             **identity,
             "url": self._source.torrent_locator,
             "out_dir": os.path.abspath(self.out_dir),
+            "fingerprint": _folder_fingerprint(self.out_dir),
             "stale": [],
         }
         save_cache(self._cache)

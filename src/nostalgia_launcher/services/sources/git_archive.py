@@ -95,8 +95,7 @@ def ls_remote_sha(git_url: str, pin: str | None) -> str | None:
     out, or the requested ref can't be resolved — never raises."""
     if not is_allowed_git_url(git_url):
         return None
-    args = ["git", "ls-remote", git_url]
-    args.append(pin if pin else "HEAD")
+    args = ["git", "ls-remote", git_url, "--", pin if pin else "HEAD"]
     env = clean_system_env({"GIT_TERMINAL_PROMPT": "0"})
     try:
         proc = subprocess.run(
@@ -135,6 +134,13 @@ class GitArchiveBackend(SourceBackend):
             return None
         branch = source.get("branch")
         ref = source.get("ref")
+        if isinstance(branch, str) and branch.strip().startswith("-"):
+            # Defence in depth: never let a catalog-controlled ref starting
+            # with "-" reach `git ls-remote` as an option-like token.
+            return None
+        if isinstance(ref, str) and ref.strip().startswith("-"):
+            # Same guard for explicit refs.
+            return None
         cleaned: dict = {"kind": self.KIND, "git": git}
         if isinstance(branch, str) and branch.strip():
             cleaned["branch"] = branch.strip()

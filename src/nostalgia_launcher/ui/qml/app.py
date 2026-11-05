@@ -166,6 +166,7 @@ class QmlNostalgiaLauncherApp:
         # tab's operation lands so a Browse install can be followed by
         # another (busy clears, installed entries leave the list).
         self._browse_on_settle = {}
+        self._wired_content: set = set()
         self._wire_content(
             self._mods, self._hub.mods, "mods", bridge.modsLoaded
         )
@@ -411,6 +412,11 @@ class QmlNostalgiaLauncherApp:
 
     def _wire_content(self, model, ctrl, kind, loaded_signal):
         """Snapshot provider + action callbacks for one content tab."""
+        wired = getattr(self, "_wired_content", None)
+        if wired is None:
+            wired = self._wired_content = set()
+        if kind in wired:
+            return
         if kind == "addons":
 
             def tab_entries(state):
@@ -577,6 +583,7 @@ class QmlNostalgiaLauncherApp:
         model.browseRequested.connect(
             lambda _b=dialog: self._open_browse_dialog(_b)
         )
+        self._wired_content.add(kind)
         self._browse_on_settle[kind] = (browse, _refresh_browse)
 
     def _after_content_op(self, model, kind: str, op_kind: str):
@@ -650,9 +657,15 @@ class QmlNostalgiaLauncherApp:
             if install_dir:
                 from ...core import config_store
 
-                config_store.apply_confirmed_out_dir(
+                if not config_store.apply_confirmed_out_dir(
                     prof.state_path(), install_dir
-                )
+                ):
+                    self._profile_error(
+                        "Could not save the game folder — "
+                        "switch to the profile and set it in Settings."
+                    )
+                    self._settings.refresh()
+                    return
         finally:
             profiles.activate(prev_active)
         self._settings.refresh()

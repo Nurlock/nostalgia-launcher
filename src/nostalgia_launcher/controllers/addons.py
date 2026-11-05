@@ -11,7 +11,6 @@ Addons panel renders them. No GUI toolkit.
 from __future__ import annotations
 
 import os
-import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -20,6 +19,7 @@ from dataclasses import replace
 
 from ..core import config_store
 from ..core.errors import describe_install_error
+from ..core.filesystem import rmtree_force
 from ..core.helpers import same_git_repo
 from ..core.log_sink import log
 from ..services import addons, catalog
@@ -1448,7 +1448,7 @@ class AddonsController:
             try:
                 dirp = os.path.join(addons.addons_path(client), folder)
                 if os.path.isdir(dirp):
-                    shutil.rmtree(dirp)
+                    rmtree_force(dirp)
                 config_store.update_config(
                     lambda c, f=folder: c.get("addons", {}).pop(f, None)
                 )

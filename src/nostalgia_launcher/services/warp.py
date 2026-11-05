@@ -211,22 +211,32 @@ def start_tunnel(private_key: str, address_v4: str = "172.16.0.2/32") -> dict:
             )
         except OSError:
             pass
-    socks_port = get_free_port()
-    http_port = get_free_port()
-    cfg = render_config(private_key, address_v4, socks_port, http_port)
-    fd, cfg_path = tempfile.mkstemp(
-        prefix="warp_tun_", suffix=".conf", text=True
-    )
-    with os.fdopen(fd, "w") as f:
-        f.write(cfg)
-    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    proc = subprocess.Popen(
-        [bin_path, "-c", cfg_path],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        creationflags=flags,
-    )
-    if not wait_for_port(socks_port, timeout=12.0):
+    for _ in range(3):
+        socks_port = get_free_port()
+        http_port = get_free_port()
+        cfg = render_config(private_key, address_v4, socks_port, http_port)
+        fd, cfg_path = tempfile.mkstemp(
+            prefix="warp_tun_", suffix=".conf", text=True
+        )
+        with os.fdopen(fd, "w") as f:
+            f.write(cfg)
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        proc = subprocess.Popen(
+            [bin_path, "-c", cfg_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+        )
+        if wait_for_port(socks_port, timeout=12.0):
+            return {
+                "proc": proc,
+                "cfg_path": cfg_path,
+                "proxies": {
+                    "ALL_PROXY": f"socks5h://127.0.0.1:{socks_port}",
+                    "HTTP_PROXY": f"http://127.0.0.1:{http_port}",
+                    "HTTPS_PROXY": f"http://127.0.0.1:{http_port}",
+                },
+            }
         proc.terminate()
         try:
             proc.wait(timeout=3)
@@ -234,16 +244,7 @@ def start_tunnel(private_key: str, address_v4: str = "172.16.0.2/32") -> dict:
             proc.kill()
         if os.path.exists(cfg_path):
             os.remove(cfg_path)
-        raise RuntimeError("Bundled WARP tunnel failed to start")
-    return {
-        "proc": proc,
-        "cfg_path": cfg_path,
-        "proxies": {
-            "ALL_PROXY": f"socks5h://127.0.0.1:{socks_port}",
-            "HTTP_PROXY": f"http://127.0.0.1:{http_port}",
-            "HTTPS_PROXY": f"http://127.0.0.1:{http_port}",
-        },
-    }
+    raise RuntimeError("Bundled WARP tunnel failed to start")
 
 
 def stop_tunnel(handle: dict | None) -> None:

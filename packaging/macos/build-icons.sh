@@ -12,11 +12,11 @@ ICONSET="$OUT_DIR/NostalgiaLauncher.iconset"
 SRC="$ROOT/packaging/icons/NostalgiaLauncher.png"
 ICNS="$OUT_DIR/NostalgiaLauncher.icns"
 
-# Generate the original "N" monogram icon (flat rounded square, no medallion)
-# from the committed generator script so the icns is built from the new art.
-if command -v uv >/dev/null 2>&1; then
-  (cd "$ROOT" && QT_QPA_PLATFORM=offscreen \
-    uv run python packaging/icons/generate_icon.py)
+# SRC is rendered from NostalgiaLauncher-IconNoText.svg via
+# packaging/icons/render_from_svg.py — see docs/agents-packaging.md.
+if [[ ! -f "$SRC" ]]; then
+  echo "missing $SRC" >&2
+  exit 1
 fi
 
 if command -v sips >/dev/null 2>&1; then

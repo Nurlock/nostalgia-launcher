@@ -13,7 +13,7 @@
 
 # Nostalgia Launcher
 
-<img src="NostalgiaLauncher.svg" alt="Nostalgia Launcher logo" align="left" width="180" /> Nostalgia Launcher keeps your game installation up to date and helps you manage mods, addons, and settings — all in one place. Your community gives you a small setup file, you pick your game folder, and the launcher takes care of the rest.
+<img src="./NostalgiaLauncher-IconNoText.svg" alt="Nostalgia Launcher logo" align="left" width="180" /> Nostalgia Launcher keeps your game installation up to date and helps you manage mods, addons, and settings — all in one place. Your community gives you a small setup file, you pick your game folder, and the launcher takes care of the rest.
 
 > **What this project is not.** Nostalgia Launcher does not come with any game files and does not run game servers. It has no built-in server list. You bring the game installation and a setup file from a community you trust; the launcher applies it.
 

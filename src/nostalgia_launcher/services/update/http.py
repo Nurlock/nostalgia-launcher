@@ -156,6 +156,21 @@ def download_file(
                     if is_httpx
                     else (getattr(resp, "status", None) or resp.getcode())  # type: ignore[attr-defined, call-arg]
                 )  # type: ignore[attr-defined]
+                if status is not None and status >= 400:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+                    if is_httpx:
+                        import urllib.error
+                        from email.message import Message
+
+                        raise urllib.error.HTTPError(
+                            url,
+                            status,
+                            f"HTTP {status}",
+                            Message(),
+                            None,
+                        )
+                    raise OSError(f"HTTP {status} error")
                 if got and status != 206:
                     downloaded, mode, hasher, bytes_at_t0 = (
                         0,
@@ -239,15 +254,23 @@ def download_file(
                     downloaded=downloaded_val,
                     total=total_val,
                 )
-            if hasher is not None:
-                digest = hasher.hexdigest().upper()
+            if hasher is None:
+                # Resumed path: hash the finished file once for the cache
+                # digest (resume never re-hashes while downloading).
                 try:
-                    cache[dest] = [digest, os.path.getmtime(dest)]
+                    hasher = hashlib.sha1()
+                    with open(dest, "rb") as f:
+                        for chunk in iter(lambda: f.read(1 << 20), b""):
+                            hasher.update(chunk)
                 except OSError:
                     cache.pop(dest, None)
-                return digest
-            cache.pop(dest, None)
-            return None
+                    return None
+            digest = hasher.hexdigest().upper()
+            try:
+                cache[dest] = [digest, os.path.getmtime(dest)]
+            except OSError:
+                cache.pop(dest, None)
+            return digest
         except Exception as e:
             if is_cancelled and is_cancelled():
                 raise RuntimeError("Cancelled") from None

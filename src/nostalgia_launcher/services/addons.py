@@ -364,58 +364,48 @@ def _parse_interface_text(text: str) -> int | None:
     return None
 
 
-def discover_repo_addons(
-    data: bytes, client_version: str | None = None
+def _toc_interface(zf, filename: str) -> int | None | bool:
+    """Interface value of a zip member, False when not a .toc file."""
+    stem, dot, ext = filename.rpartition(".")
+    if not dot or ext.lower() != "toc":
+        return False
+    try:
+        raw = zf.read(filename)
+    except KeyError:
+        return None
+    try:
+        text = raw.decode("utf-8-sig", errors="replace")
+    except Exception:
+        return None
+    return _parse_interface_text(text)
+
+
+_toc_interface_flat = _toc_interface
+
+
+def _discover(
+    data: bytes, strip_top: bool, client_version: str | None = None
 ) -> list[tuple[str, str]]:
-    """Every addon folder shipped inside a repo archive zip.
+    """Shared core for discover_repo_addons / discover_flat_addons.
 
-    Returns ``[(folder_name, stripped_prefix), ...]`` where
-    ``stripped_prefix`` is the archive-root-relative directory ("/"
-    separated, top-level "<repo>-<sha>/" already removed) holding
-    ``<folder_name>.toc`` — ready for ``deploy.unpack_prefix``. A folder
-    counts when it holds a ``<dirname>.toc`` (extension case-insensitive)
-    whose Interface fits ``client_version`` (missing Interface accepted).
-    A `.toc` sitting at the stripped root is a single-addon repo: its stem
-    is the real folder name (often different from the catalog row, e.g.
-    `ModernMapMarkers.toc` inside `ModernMapMarkers-WotLK`) and installs
-    with an empty prefix (whole-tree unpack).
-
-    Nested addons collapse to the shallowest claimant; once the root is
-    claimed, deeper `.toc` files (bundled libs like LibStub) are skipped.
-    Raises ``zipfile.BadZipFile`` on corrupt input — callers decide
-    whether to fall back.
+    When ``strip_top`` is True the archive-root directory (the
+    ``<repo>-<sha>/`` wrapper) is removed before matching; prebuilt zips
+    whose members sit at the archive root pass False.
     """
     import zipfile
     from io import BytesIO
 
     version = client_version or ""
-
-    def _toc_interface(zf, filename: str) -> int | None | bool:
-        """Interface value of a zip member, False when not a .toc file."""
-        stem, dot, ext = filename.rpartition(".")
-        if not dot or ext.lower() != "toc":
-            return False
-        try:
-            raw = zf.read(filename)
-        except KeyError:
-            return None
-        try:
-            text = raw.decode("utf-8-sig", errors="replace")
-        except Exception:
-            return None
-        return _parse_interface_text(text)
-
     candidates: list[tuple[str, str, int | None]] = []
     root_stems: list[str] = []
     with zipfile.ZipFile(BytesIO(data)) as zf:
         for info in zf.infolist():
             if info.is_dir():
                 continue
-            rel = "/".join(
-                p
-                for p in info.filename.replace("\\", "/").split("/")[1:]
-                if p not in ("", ".")
-            )
+            raw_parts = info.filename.replace("\\", "/").split("/")
+            if strip_top:
+                raw_parts = raw_parts[1:]
+            rel = "/".join(p for p in raw_parts if p not in ("", "."))
             if not rel or ".." in rel.split("/"):
                 continue
             parts = rel.split("/")
@@ -440,10 +430,7 @@ def discover_repo_addons(
                 continue
             candidates.append((dirname, "/".join(parts[:-1]), interface))
     if root_stems:
-        # Single-addon repo (e.g. a lone UI overhaul): the whole tree
-        # installs under each root stem; bundled nested libs are skipped.
         return [(stem, "") for stem in sorted(set(root_stems))]
-    # Shallowest claimant wins; deeper nested duplicates are skipped.
     candidates.sort(key=lambda c: c[1].count("/"))
     claimed: list[str] = []
     found: list[tuple[str, str]] = []
@@ -457,6 +444,30 @@ def discover_repo_addons(
         seen.add(name.lower())
         found.append((name, prefix))
     return found
+
+
+def discover_repo_addons(
+    data: bytes, client_version: str | None = None
+) -> list[tuple[str, str]]:
+    """Every addon folder shipped inside a repo archive zip.
+
+    Returns ``[(folder_name, stripped_prefix), ...]`` where
+    ``stripped_prefix`` is the archive-root-relative directory ("/"
+    separated, top-level "<repo>-<sha>/" already removed) holding
+    ``<folder_name>.toc`` — ready for ``deploy.unpack_prefix``. A folder
+    counts when it holds a ``<dirname>.toc`` (extension case-insensitive)
+    whose Interface fits ``client_version`` (missing Interface accepted).
+    A `.toc` sitting at the stripped root is a single-addon repo: its stem
+    is the real folder name (often different from the catalog row, e.g.
+    `ModernMapMarkers.toc` inside `ModernMapMarkers-WotLK`) and installs
+    with an empty prefix (whole-tree unpack).
+
+    Nested addons collapse to the shallowest claimant; once the root is
+    claimed, deeper `.toc` files (bundled libs like LibStub) are skipped.
+    Raises ``zipfile.BadZipFile`` on corrupt input — callers decide
+    whether to fall back.
+    """
+    return _discover(data, strip_top=True, client_version=client_version)
 
 
 def discover_flat_addons(
@@ -465,75 +476,7 @@ def discover_flat_addons(
     """Like discover_repo_addons but for prebuilt zips whose members sit at
     the archive root (no "<repo>-<sha>/" wrapper). Same matching rules,
     same return shape."""
-    import zipfile
-    from io import BytesIO
-
-    version = client_version or ""
-    candidates: list[tuple[str, str, int | None]] = []
-    root_stems: list[str] = []
-    with zipfile.ZipFile(BytesIO(data)) as zf:
-        for info in zf.infolist():
-            if info.is_dir():
-                continue
-            rel = "/".join(
-                p
-                for p in info.filename.replace("\\", "/").split("/")
-                if p not in ("", ".")
-            )
-            if not rel or ".." in rel.split("/"):
-                continue
-            parts = rel.split("/")
-            if len(parts) == 1:
-                interface = _toc_interface_flat(zf, info.filename)
-                if interface is False:
-                    continue
-                stem = parts[0].rpartition(".")[0]
-                if interface_allowed(interface, version):
-                    root_stems.append(stem)
-                continue
-            dirname = parts[-2]
-            stem, dot, ext = parts[-1].rpartition(".")
-            if not dot or ext.lower() != "toc":
-                continue
-            if stem != dirname and stem.lower() != dirname.lower():
-                continue
-            interface = _toc_interface_flat(zf, info.filename)
-            if interface is False:  # unreachable (checked above)
-                continue
-            if not interface_allowed(interface, version):
-                continue
-            candidates.append((dirname, "/".join(parts[:-1]), interface))
-    if root_stems:
-        return [(stem, "") for stem in sorted(set(root_stems))]
-    candidates.sort(key=lambda c: c[1].count("/"))
-    claimed: list[str] = []
-    found: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for name, prefix, _interface in candidates:
-        if name.lower() in seen:
-            continue
-        if any(prefix == c or prefix.startswith(c + "/") for c in claimed):
-            continue
-        claimed.append(prefix)
-        seen.add(name.lower())
-        found.append((name, prefix))
-    return found
-
-
-def _toc_interface_flat(zf, filename: str) -> int | None | bool:
-    """Interface value of a zip member, False when not a .toc file."""
-    stem, dot, ext = filename.rpartition(".")
-    if not dot or ext.lower() != "toc":
-        return False
-    try:
-        raw = zf.read(filename)
-    except KeyError:
-        return None
-    try:
-        text = raw.decode("utf-8-sig", errors="replace")
-    except Exception:
-        return None
-    return _parse_interface_text(text)
+    return _discover(data, strip_top=False, client_version=client_version)
 
 
 def read_toc_file(path: str) -> dict:

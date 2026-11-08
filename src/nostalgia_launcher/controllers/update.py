@@ -21,7 +21,7 @@ from ..core.filesystem import (
     remove_wdb,
 )
 from ..core.log_sink import log
-from ..core.platform_support import can_launch_client, is_linux
+from ..core.platform_support import can_launch_client, data_dir, is_linux
 from ..services import mods
 from ..services.self_update import (
     fetch_updater_latest_tag,
@@ -754,7 +754,7 @@ class UpdateController:
                 threading.Thread(
                     target=self._watch_game, args=(proc, pid), daemon=True
                 ).start()
-            prefix = umu.compute_wine_prefix()
+            prefix = os.path.join(data_dir(), "wineprefix")
             self._announce(
                 f"Launched {exe_lbl} via umu (PID {pid}, WINEPREFIX "
                 f"{prefix}).\n",

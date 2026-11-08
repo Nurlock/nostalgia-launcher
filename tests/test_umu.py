@@ -128,15 +128,10 @@ def test_default_proton_falls_back_to_umu_codename(monkeypatch, tmp_path):
     assert umu.default_proton() == "UMU-Proton"
 
 
-def test_available_protons_includes_codenames(monkeypatch, tmp_path):
+def test_available_protons_lists_installed_only(monkeypatch, tmp_path):
     root = tmp_path / "compat-tools"
     (root / "GE-Proton9-4").mkdir()
-    result = umu.available_protons()
-    assert "GE-Proton9-4" in result
-    for codename in umu.PROTON_CODENAMES:
-        assert codename in result
-    # A build and a codename for the same family aren't duplicated.
-    assert result.count("GE-Proton") == 1
+    assert umu.available_protons() == ["GE-Proton9-4"]
 
 
 # ── compute_wine_prefix ───────────────────────────────────────────────
@@ -736,3 +731,55 @@ def test_launch_skips_gamemoderun_when_absent(monkeypatch, tmp_path):
 
     args, _ = popen.call_args
     assert args[0] == ["/usr/bin/umu-run", str(exe)]
+
+
+# ── cross-base proton resolution / contract hardening ──
+
+
+def test_resolve_proton_picks_newest_across_bases(monkeypatch, tmp_path):
+    """Codename resolves to the global newest, not the first dir's."""
+    first = tmp_path / "native"
+    second = tmp_path / "flatpak"
+    (first / "GE-Proton9-4").mkdir(parents=True)
+    (second / "GE-Proton9-18").mkdir(parents=True)
+    monkeypatch.setattr(umu, "_COMPAT_TOOLS_DIRS", (str(first), str(second)))
+    assert umu.resolve_proton("GE-Proton") == str(second / "GE-Proton9-18")
+
+
+def test_list_protons_lists_every_directory(tmp_path):
+    """No name filter: the compat dir contents are the selector."""
+    root = tmp_path / "compat-tools"
+    (root / "GE-Proton9-4").mkdir()
+    (root / "backup").mkdir()
+    assert umu.list_protons() == ["GE-Proton9-4", "backup"]
+
+
+def test_build_env_extra_cannot_clobber_contract(tmp_path):
+    """Proxy extras layer under the required WINEPREFIX/GAMEID keys."""
+    prefix = umu.compute_wine_prefix()
+    env = umu.build_env(
+        "UMU-Proton",
+        "id",
+        extra_env={"GAMEID": "evil", "WINEPREFIX": "/evil"},
+    )
+    assert env["GAMEID"] == "id"
+    assert env["WINEPREFIX"] == prefix
+
+
+def test_kill_game_sigkills_orphaned_group(monkeypatch):
+    """Wrapper dead but Proton children alive → still escalates."""
+    kills: list = []
+    monkeypatch.setattr(platform_support, "is_linux", lambda: True)
+    monkeypatch.setattr(
+        umu.os,
+        "killpg",
+        lambda pgid, sig: kills.append(("pg", pgid, sig)),
+        raising=False,
+    )
+    monkeypatch.setattr(umu, "_pid_alive", lambda pid: False)
+    monkeypatch.setattr(umu, "_group_alive", lambda pid, pg: True)
+    monkeypatch.setattr(umu.time, "sleep", lambda s: None)
+    fake_sig = types.SimpleNamespace(SIGTERM=15, SIGKILL=9)
+    monkeypatch.setattr(umu, "signal", fake_sig)
+    umu.kill_game(4242, 9999, grace=0.01)
+    assert ("pg", 9999, 9) in kills

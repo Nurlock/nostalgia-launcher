@@ -21,18 +21,11 @@ import time
 
 from ..core import platform_support
 from ..core.log_sink import log
-from ..core.process_env import (
-    SCRUBBED_ENV_PREFIXES,
-    SCRUBBED_ENV_VARS,
-    clean_system_env,
-)
+from ..core.process_env import clean_system_env
 
 # A valid umu codename: umu-launcher uses UMU-Proton (its own, continuously
 # updated Proton build) unless the user picks a specific installed build.
 DEFAULT_PROTON = "UMU-Proton"
-# Canonical codenames surfaced in the Proton selector alongside any locally
-# installed builds discovered in the Steam compatibility-tools dirs.
-PROTON_CODENAMES = ("UMU-Proton", "GE-Proton", "Proton-Experimental", "Proton")
 # Not a real umu-database id — there is no old-school WoW entry — so it just
 # names the prefix/token and skips unrelated game fixes.
 DEFAULT_GAME_ID = "umu-nostalgia-launcher"
@@ -53,17 +46,13 @@ DEFAULT_RENDERER = RENDERER_AUTO
 
 _UMU_EXE = "umu-run"
 
-# Scrubbed-env single source is `core.process_env` (shared with
-# the 7z/git/folder spawns); the underscore aliases keep the
-# previous attribute paths working.
-_SCRUBBED_ENV_VARS = SCRUBBED_ENV_VARS
-_SCRUBBED_ENV_PREFIXES = SCRUBBED_ENV_PREFIXES
 
 # The compatibility-tools dirs Steam (native and Flatpak) reads for custom
 # Proton builds. GE-Proton/UMU-Proton installs land here as subdirectories.
 _COMPAT_TOOLS_DIRS = (
     "~/.local/share/Steam/compatibilitytools.d",
     "~/.var/app/com.valvesoftware.Steam/.local/share/Steam/compatibilitytools.d",
+    "/usr/share/steam/compatibilitytools.d",
 )
 _UMU_PATH = "~/.local/bin/umu-run"
 
@@ -121,39 +110,45 @@ def resolve_proton(name: str) -> str:
     """Resolve a Proton *name* to a concrete path.
 
     Concrete paths (`~/GE-Proton9-4`, absolute paths) pass through unchanged.
-    Codenames (`GE-Proton`, `UMU-Proton`) are resolved to the highest-numbered
-    matching directory in the Steam compatibility-tools dirs. When nothing
-    matches, the codename is passed through so umu can fall back to its own
-    default (downloading UMU-Proton) or fail with its own message.
+    Exact directory names win; other codenames (`GE-Proton`) resolve to
+    the highest-numbered match across all compatibility-tools dirs.
+    Unmatched codenames pass through for umu to resolve or fail on.
+
     """
     name = (name or "").strip()
     if not name or "/" in name:
         return os.path.expanduser(name) if name else name
     if name.startswith("~"):
         return os.path.expanduser(name)
+    exact: str | None = None
+    cands: list = []
     for base in _COMPAT_TOOLS_DIRS:
         root = os.path.expanduser(base)
         if not os.path.isdir(root):
             continue
-        exact = os.path.join(root, name)
-        if os.path.isdir(exact):
-            return exact
-        candidates = [
-            d
-            for d in os.listdir(root)
-            if d.startswith(name) and os.path.isdir(os.path.join(root, d))
-        ]
-        if candidates:
-            best = max(candidates, key=_version_key)
-            log(f"Proton {name} → {best}", "dim")
-            return os.path.join(root, best)
+        path = os.path.join(root, name)
+        if exact is None and os.path.isdir(path):
+            exact = path
+        try:
+            entries = os.listdir(root)
+        except OSError:
+            continue
+        for d in entries:
+            full = os.path.join(root, d)
+            if d.startswith(name) and os.path.isdir(full):
+                cands.append((d, full))
+    if exact is not None:
+        return exact
+    if cands:
+        bname, bpath = max(cands, key=lambda t: _version_key(t[0]))
+        log(f"Proton {name} → {bname}", "dim")
+        return bpath
     return name
 
 
 def list_protons() -> list:
     """All Proton builds found in the Steam compatibility-tools dirs, newest
-    first (by `_version_key`). Concrete directories only — the canonical
-    codenames are added separately by `default_proton`/`available_protons`."""
+    first (by `_version_key`)."""
     found = []
     for base in _COMPAT_TOOLS_DIRS:
         root = os.path.expanduser(base)
@@ -179,17 +174,8 @@ def default_proton() -> str:
 
 
 def available_protons() -> list:
-    """The Proton selector contents: any installed builds (newest first)
-    followed by the canonical codenames, de-duplicated and in a stable order
-    with the default (`UMU-Proton`) first when present."""
-    builds = list_protons()
-    seen = set(builds)
-    ordered = list(builds)
-    for codename in PROTON_CODENAMES:
-        if codename not in seen:
-            ordered.append(codename)
-            seen.add(codename)
-    return ordered
+    """The Proton selector contents: installed builds, newest first."""
+    return list_protons()
 
 
 def compute_wine_prefix() -> str:
@@ -230,6 +216,8 @@ def build_env(
     via the MODS panel — Wine's default native,builtin overrides load them),
     and the async shader-compilation flags are exported for it."""
     env = clean_system_env()
+    if extra_env:
+        env.update(extra_env)
     env["WINEPREFIX"] = compute_wine_prefix()
     env["PROTONPATH"] = resolve_proton(proton)
     env["GAMEID"] = game_id
@@ -246,8 +234,6 @@ def build_env(
         env["PROTON_USE_WINED3D"] = "1"
     if wayland:
         env["PROTON_ENABLE_WAYLAND"] = "1"
-    if extra_env:
-        env.update(extra_env)
     return env
 
 
@@ -433,8 +419,10 @@ def kill_game(pid: int, pgid: int, grace: float = 2.0) -> None:
     deadline = time.monotonic() + grace
     while time.monotonic() < deadline:
         try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
+            alive = _pid_alive(pid) or _group_alive(pid, pgid)
+        except OSError:
+            alive = True
+        if not alive:
             return
         time.sleep(0.05)
     try:

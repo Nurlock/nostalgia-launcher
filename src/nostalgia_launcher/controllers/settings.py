@@ -421,8 +421,8 @@ class SettingsController:
         return find_umu()
 
     def set_umu_proton(self, name: str) -> dict:
-        """Persist the PROTONPATH value (a codename like UMU-Proton/GE-Proton,
-        or a path). An empty value resets to the default codename."""
+        """Persist the PROTONPATH value (a build name or a path).
+        An empty value resets to the default."""
         name = (name or "").strip()
         self._set_launch(
             lambda launch: launch.__setitem__(
@@ -472,8 +472,7 @@ class SettingsController:
         return self.state.config
 
     def available_protons(self) -> list:
-        """Proton builds for the Settings selector (installed builds newest
-        first, then canonical codenames)."""
+        """Proton builds for the Settings selector (newest first)."""
         from ..services.umu import available_protons
 
         return available_protons()

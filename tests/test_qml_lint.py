@@ -1,8 +1,9 @@
-"""qmllint gate for QML sources (skips when the binary is absent).
+"""qmllint gate for QML sources (skips when no binary is usable).
 
-qmllint is a Qt binary, not a PyPI/uv package: the `pyside6` wheel does
-not bundle it and no `pyside6-qmllint` package exists. Candidate
-locations, first hit wins: `PATH`, then the distro Qt path
+Prefers the version-matched `pyside6-qmllint` from the venv (same Qt as
+the PySide6 wheel): a distro qmllint older than the wheel rejects the
+wheel's own qmltypes and fails every file on tool skew. Distro
+fallback candidates, first hit wins: `PATH`, then the distro Qt path
 (`/usr/lib/qt6/bin/qmllint`, owned by `qt6-declarative` on Arch).
 """
 
@@ -10,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -66,7 +68,25 @@ _BASE_IMPORT_MARKERS = (
 )
 
 
+def _pyside6_qmllint() -> str | None:
+    """Version-matched qmllint from the venv (same Qt as the PySide6 wheel).
+
+    A distro qmllint older than the wheel rejects the wheel's own qmltypes
+    (`resolvedFile`) and then cannot import QtQuick at all — every file
+    fails on tool skew, not QML bugs. Prefer the venv binary; the distro
+    candidates below stay as fallback."""
+    exe = "pyside6-qmllint.exe" if os.name == "nt" else "pyside6-qmllint"
+    bindir = "Scripts" if os.name == "nt" else "bin"
+    for cand in (shutil.which(exe), os.path.join(sys.prefix, bindir, exe)):
+        if cand and os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
 def _qmllint():
+    matched = _pyside6_qmllint()
+    if matched:
+        return matched
     for cand in _CANDIDATES:
         path = shutil.which(cand) if "/" not in cand else cand
         if path and os.path.isfile(path) and os.access(path, os.X_OK):

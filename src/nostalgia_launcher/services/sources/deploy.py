@@ -141,22 +141,6 @@ def _resolve_inside(base: str, dest_rel: str) -> str:
             )
         os.makedirs(parent, exist_ok=True)
     return dest
-    """Join + makedirs ``dest_rel`` under ``base``, refusing symlink-parent
-    escape (realpath containment; parent == base allowed)."""
-    dest = os.path.join(base, dest_rel)
-    if not safe_destination(dest, base):
-        raise RuntimeError(f"Refusing unsafe install path: {dest_rel!r}")
-    parent = os.path.dirname(dest)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-        parent_real = os.path.realpath(parent)
-        if parent_real != os.path.realpath(base) and not safe_destination(
-            parent_real, base
-        ):
-            raise RuntimeError(
-                f"Refusing unsafe install path (symlink parent): {dest_rel!r}"
-            )
-    return dest
 
 
 def install_plain(client_dir: str, data: bytes, dest_rel: str) -> str:

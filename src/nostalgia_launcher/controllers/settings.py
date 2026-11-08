@@ -421,8 +421,8 @@ class SettingsController:
         return find_umu()
 
     def set_umu_proton(self, name: str) -> dict:
-        """Persist the PROTONPATH value (a codename like UMU-Proton/GE-Proton,
-        or a path). An empty value resets to the default codename."""
+        """Persist the PROTONPATH value (a build name or a path).
+        An empty value resets to the default."""
         name = (name or "").strip()
         self._set_launch(
             lambda launch: launch.__setitem__(
@@ -472,8 +472,7 @@ class SettingsController:
         return self.state.config
 
     def available_protons(self) -> list:
-        """Proton builds for the Settings selector (installed builds newest
-        first, then canonical codenames)."""
+        """Proton builds for the Settings selector (newest first)."""
         from ..services.umu import available_protons
 
         return available_protons()
@@ -501,6 +500,27 @@ class SettingsController:
             lambda launch: launch.__setitem__(
                 "umu_game_id",
                 (game_id or "").strip() or "umu-nostalgia-launcher",
+            )
+        )
+        return self.state.config
+
+    def warp_enabled(self) -> bool:
+        """Whether the WARP tunnel is on: config toggle or env opt-in."""
+        if self.launch.warp_enabled:
+            return True
+        from ..services import warp as _warp
+
+        return _warp.warp_enabled_from_env()
+
+    def set_warp_enabled(self, enabled: bool) -> dict:
+        """Persist the WARP-tunnel game-launch toggle."""
+        self._set_launch(
+            lambda launch: launch.__setitem__("warp_enabled", bool(enabled))
+        )
+        self._dispatcher.post(
+            LogMessage(
+                f"WARP tunnel {'enabled' if enabled else 'disabled'}.\n",
+                "dim",
             )
         )
         return self.state.config

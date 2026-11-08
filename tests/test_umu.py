@@ -128,15 +128,10 @@ def test_default_proton_falls_back_to_umu_codename(monkeypatch, tmp_path):
     assert umu.default_proton() == "UMU-Proton"
 
 
-def test_available_protons_includes_codenames(monkeypatch, tmp_path):
+def test_available_protons_lists_installed_only(monkeypatch, tmp_path):
     root = tmp_path / "compat-tools"
     (root / "GE-Proton9-4").mkdir()
-    result = umu.available_protons()
-    assert "GE-Proton9-4" in result
-    for codename in umu.PROTON_CODENAMES:
-        assert codename in result
-    # A build and a codename for the same family aren't duplicated.
-    assert result.count("GE-Proton") == 1
+    assert umu.available_protons() == ["GE-Proton9-4"]
 
 
 # ── compute_wine_prefix ───────────────────────────────────────────────
@@ -372,6 +367,51 @@ def test_launch_omits_wayland_env_when_disabled(monkeypatch, tmp_path):
     assert "PROTON_ENABLE_WAYLAND" not in kwargs["env"]
 
 
+def test_launch_forwards_extra_env(monkeypatch, tmp_path):
+    game = tmp_path / "game"
+    game.mkdir()
+    exe = game / "WoW.exe"
+    exe.write_text("")
+    popen = mock.Mock()
+    popen.return_value.pid = 7
+    monkeypatch.setattr(umu.subprocess, "Popen", popen)
+    monkeypatch.setattr(umu.os, "getpgid", lambda pid: 7, raising=False)
+    monkeypatch.setattr(umu, "find_umu", lambda: "/usr/bin/umu-run")
+
+    umu.launch(
+        str(game),
+        str(exe),
+        extra_env={"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+    )
+
+    _, kwargs = popen.call_args
+    assert kwargs["env"]["ALL_PROXY"] == "socks5h://127.0.0.1:18080"
+    assert kwargs["env"]["GAMEID"] == "umu-nostalgia-launcher"
+
+
+def test_launch_scrubs_warp_key_from_game_env(monkeypatch, tmp_path):
+    game = tmp_path / "game"
+    game.mkdir()
+    exe = game / "WoW.exe"
+    exe.write_text("")
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    popen = mock.Mock()
+    popen.return_value.pid = 7
+    monkeypatch.setattr(umu.subprocess, "Popen", popen)
+    monkeypatch.setattr(umu.os, "getpgid", lambda pid: 7, raising=False)
+    monkeypatch.setattr(umu, "find_umu", lambda: "/usr/bin/umu-run")
+
+    umu.launch(
+        str(game),
+        str(exe),
+        extra_env={"ALL_PROXY": "socks5h://127.0.0.1:18080"},
+    )
+
+    _, kwargs = popen.call_args
+    assert "NOSTALGIA_WARP_KEY" not in kwargs["env"]
+    assert kwargs["env"]["ALL_PROXY"] == "socks5h://127.0.0.1:18080"
+
+
 # ── launch ──────────────────────────────────────────────────────────────
 
 
@@ -572,6 +612,29 @@ def test_game_process_alive_false_when_all_dead(monkeypatch):
     assert umu.game_process_alive(4242, 9999) is False
 
 
+def test_game_process_alive_trusts_proc_over_recycled_pid(monkeypatch):
+    """Wrapper reaped but pid recycled by an unrelated process → gone.
+
+    ``poll()`` on our own handle is authoritative; the /proc pid check
+    must not resurrect it (stuck TERMINATE otherwise)."""
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(umu, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(umu.os, "listdir", lambda p: ["1"])
+    monkeypatch.setattr(umu.os, "getpgid", lambda pid: 1, raising=False)
+    proc = Mock()
+    proc.poll.return_value = 0
+    assert umu.game_process_alive(4242, 9999, proc) is False
+    proc.poll.return_value = None
+    assert umu.game_process_alive(4242, 9999, proc) is True
+
+
+def test_game_process_alive_proc_none_keeps_pid_fallback(monkeypatch):
+    """No handle (old callers) → legacy pid check still applies."""
+    monkeypatch.setattr(umu, "_pid_alive", lambda pid: pid == 4242)
+    assert umu.game_process_alive(4242, 9999) is True
+
+
 def test_pid_alive_treats_zombie_as_dead(monkeypatch, tmp_path):
     """A zombie wrapper (kill(sig 0) ok, state Z) reads as not alive."""
     monkeypatch.setattr(umu.os, "kill", lambda pid, sig: None)
@@ -668,3 +731,55 @@ def test_launch_skips_gamemoderun_when_absent(monkeypatch, tmp_path):
 
     args, _ = popen.call_args
     assert args[0] == ["/usr/bin/umu-run", str(exe)]
+
+
+# ── cross-base proton resolution / contract hardening ──
+
+
+def test_resolve_proton_picks_newest_across_bases(monkeypatch, tmp_path):
+    """Codename resolves to the global newest, not the first dir's."""
+    first = tmp_path / "native"
+    second = tmp_path / "flatpak"
+    (first / "GE-Proton9-4").mkdir(parents=True)
+    (second / "GE-Proton9-18").mkdir(parents=True)
+    monkeypatch.setattr(umu, "_COMPAT_TOOLS_DIRS", (str(first), str(second)))
+    assert umu.resolve_proton("GE-Proton") == str(second / "GE-Proton9-18")
+
+
+def test_list_protons_lists_every_directory(tmp_path):
+    """No name filter: the compat dir contents are the selector."""
+    root = tmp_path / "compat-tools"
+    (root / "GE-Proton9-4").mkdir()
+    (root / "backup").mkdir()
+    assert umu.list_protons() == ["GE-Proton9-4", "backup"]
+
+
+def test_build_env_extra_cannot_clobber_contract(tmp_path):
+    """Proxy extras layer under the required WINEPREFIX/GAMEID keys."""
+    prefix = umu.compute_wine_prefix()
+    env = umu.build_env(
+        "UMU-Proton",
+        "id",
+        extra_env={"GAMEID": "evil", "WINEPREFIX": "/evil"},
+    )
+    assert env["GAMEID"] == "id"
+    assert env["WINEPREFIX"] == prefix
+
+
+def test_kill_game_sigkills_orphaned_group(monkeypatch):
+    """Wrapper dead but Proton children alive → still escalates."""
+    kills: list = []
+    monkeypatch.setattr(platform_support, "is_linux", lambda: True)
+    monkeypatch.setattr(
+        umu.os,
+        "killpg",
+        lambda pgid, sig: kills.append(("pg", pgid, sig)),
+        raising=False,
+    )
+    monkeypatch.setattr(umu, "_pid_alive", lambda pid: False)
+    monkeypatch.setattr(umu, "_group_alive", lambda pid, pg: True)
+    monkeypatch.setattr(umu.time, "sleep", lambda s: None)
+    fake_sig = types.SimpleNamespace(SIGTERM=15, SIGKILL=9)
+    monkeypatch.setattr(umu, "signal", fake_sig)
+    umu.kill_game(4242, 9999, grace=0.01)
+    assert ("pg", 9999, 9) in kills

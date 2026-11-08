@@ -27,6 +27,7 @@ class SettingsModel(QObject):
         self._sources: list = []
         self._clear_wdb = False
         self._close_on_launch = False
+        self._warp_enabled = False
         self._client_updates = True
         self._can_launch = False
         self._can_antivirus = False
@@ -62,6 +63,7 @@ class SettingsModel(QObject):
         self._sources = list(snap.get("sources", []))
         self._clear_wdb = bool(snap.get("clear_wdb", False))
         self._close_on_launch = bool(snap.get("close_on_launch", False))
+        self._warp_enabled = bool(snap.get("warp_enabled", False))
         self._client_updates = bool(snap.get("client_updates", True))
         self._can_launch = bool(snap.get("can_launch", False))
         self._can_antivirus = bool(snap.get("can_antivirus", False))
@@ -105,6 +107,11 @@ class SettingsModel(QObject):
         return self._close_on_launch
 
     closeOnLaunch = Property(bool, _get_close_on_launch, notify=changed)
+
+    def _get_warp_enabled(self) -> bool:
+        return self._warp_enabled
+
+    warpEnabled = Property(bool, _get_warp_enabled, notify=changed)
 
     def _get_client_updates(self) -> bool:
         return self._client_updates
@@ -246,6 +253,11 @@ class SettingsModel(QObject):
     @Slot(bool)
     def setCloseOnLaunch(self, enabled: bool) -> None:
         self._call("close_on_launch", bool(enabled))
+        self.refresh()
+
+    @Slot(bool)
+    def setWarpEnabled(self, enabled: bool) -> None:
+        self._call("warp_enabled", bool(enabled))
         self.refresh()
 
     @Slot(bool)

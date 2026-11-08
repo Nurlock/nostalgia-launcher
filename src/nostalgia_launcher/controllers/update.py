@@ -21,7 +21,7 @@ from ..core.filesystem import (
     remove_wdb,
 )
 from ..core.log_sink import log
-from ..core.platform_support import can_launch_client, is_linux
+from ..core.platform_support import can_launch_client, data_dir, is_linux
 from ..services import mods
 from ..services.self_update import (
     fetch_updater_latest_tag,
@@ -112,6 +112,35 @@ def _fallback_available(source: object) -> bool:
     return bool(source is not None and getattr(source, "fallback_url", ""))
 
 
+def _launch_warp_key(launch: dict) -> str:
+    """Persisted WARP key from the launch config (env takes precedence)."""
+    key = launch.get("warp_key", "")
+    return key.strip() if isinstance(key, str) else ""
+
+
+def _store_warp_key(key: str):
+    """config_store mutator persisting an auto-registered WARP key."""
+
+    def _mutate(c):
+        launch = dict(c.get("launch") or {})
+        launch["warp_key"] = key
+        c["launch"] = launch
+
+    return _mutate
+
+
+def _restrict_config_perms() -> None:
+    """Best-effort owner-only perms on the config holding the WARP key."""
+    try:
+        from ..core import config_store
+
+        path = getattr(config_store, "config_file", "")
+        if path and os.path.isfile(path):
+            os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 class UpdateController:
     """Owns the verify/update flow; speaks to the UI only through events.
 
@@ -134,6 +163,7 @@ class UpdateController:
         self._worker: UpdateWorker | None = None
         self._verify_worker: VerifyWorker | None = None
         self._game_proc = None
+        self._warp_tunnel = None
         self._verify_gen = 0
         self._op: str | None = None
         # Set by check_updater_update(): a newer updater release exists and
@@ -490,6 +520,92 @@ class UpdateController:
             return self._launch_game_via_umu(client_dir, cfg)
         return self._launch_game_windows(client_dir, cfg)
 
+    def _maybe_start_warp(self, cfg: dict) -> dict:
+        """Start the opt-in WARP sidecar; proxy env vars ({} when off)."""
+        from ..services import warp
+
+        if self._warp_tunnel:
+            return self._warp_tunnel["proxies"]
+        launch = cfg.get("launch") or {}
+        enabled = bool(launch.get("warp_enabled", False))
+        enabled = enabled or warp.warp_enabled_from_env()
+        if not enabled:
+            return {}
+        key = warp.warp_key_from_env() or _launch_warp_key(launch)
+        address = "172.16.0.2/32"
+        if not key:
+            self._announce("Registering anonymous WARP device…\n", "dim")
+            try:
+                reg = warp.register_device(timeout=8.0)
+            except Exception as e:
+                self._announce(
+                    f"WARP auto-register failed: {e} — launching directly.\n",
+                    "err",
+                )
+                return {}
+            key = reg["private_key"]
+            address = reg.get("address_v4") or address
+            try:
+                update_config(_store_warp_key(key))
+            except Exception:
+                self._announce(
+                    "WARP key not saved — will re-register next launch.\n",
+                    "err",
+                )
+            else:
+                _restrict_config_perms()
+            self._announce("WARP device registered.\n", "ok")
+        if cfg.get("close_on_launch"):
+            self._announce(
+                "WARP tunnel skipped: close-on-launch exits "
+                "the launcher, orphaning the sidecar.\n",
+                "err",
+            )
+            return {}
+        handle: dict | None = None
+        last_err: Exception | None = None
+        for _ in range(2):  # fresh ports per try; one retry on collision
+            try:
+                handle = warp.start_tunnel(key, address)
+                break
+            except Exception as e:
+                last_err = e
+        if handle is None:
+            self._announce(
+                f"WARP tunnel failed to start: {last_err} — "
+                "launching directly.\n",
+                "err",
+            )
+            return {}
+        self._warp_tunnel = handle
+        self._announce("WARP tunnel started.\n", "ok")
+        return self._warp_tunnel["proxies"]
+
+    def _announce(self, text: str, tag: str = "") -> None:
+        """Post a session-log event and mirror it to the retained file.
+
+        Controller posts are GUI-only; the launch lifecycle must also
+        reach `launcher.log` so headless `--print-log` sees it.
+        # shortcut: per-call mirror, not bridge-level forwarding —
+        # upgrade when the repo wants every controller event in the file.
+        """
+        self._dispatcher.post(LogMessage(text, tag))
+        from ..core import log_sink as _sink
+
+        _sink.mirror(text)
+
+    def _stop_warp(self) -> None:
+        handle, self._warp_tunnel = self._warp_tunnel, None
+        if not handle:
+            return
+        from ..services import warp
+
+        try:
+            warp.stop_tunnel(handle)
+            self._announce("WARP tunnel stopped.\n", "dim")
+        except Exception:
+            pass
+
     def _launch_game_windows(self, client_dir: str, cfg: dict) -> tuple:
         """Windows direct launch: prefer an installed external-launcher mod's
         executable, then the configured client exe, spawned detached from
@@ -518,6 +634,10 @@ class UpdateController:
             dxvk_notice = True
         if cfg.get("clear_wdb_on_launch", False):
             remove_wdb(client_dir)
+        proxies = self._maybe_start_warp(cfg)
+        game_env = dict(os.environ, **proxies) if proxies else None
+        if game_env is not None:
+            game_env.pop("NOSTALGIA_WARP_KEY", None)  # proxies only
 
         try:
             flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
@@ -527,6 +647,7 @@ class UpdateController:
                 proc = subprocess.Popen(
                     [exe],
                     cwd=client_dir,
+                    env=game_env,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     creationflags=flags,
@@ -538,6 +659,7 @@ class UpdateController:
                 proc = subprocess.Popen(
                     [exe],
                     cwd=client_dir,
+                    env=game_env,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     creationflags=flags,
@@ -556,17 +678,16 @@ class UpdateController:
                 args=(proc, pid, "game"),
                 daemon=True,
             ).start()
-            self._dispatcher.post(LogMessage(f"Launched {exe_lbl}!\n", "ok"))
+            self._announce(f"Launched {exe_lbl}!\n", "ok")
             return True, dxvk_notice
         except Exception as e:
+            self._stop_warp()
             with self._lock:
                 self.state.game_running = False
                 self._game_proc = None
                 self.state.game_pid = None
                 self.state.game_pgid = None
-            self._dispatcher.post(
-                LogMessage(f"Failed to launch {exe_lbl}: {e}\n", "err")
-            )
+            self._announce(f"Failed to launch {exe_lbl}: {e}\n", "err")
             return False, dxvk_notice
 
     def _launch_game_via_umu(self, client_dir: str, cfg: dict) -> tuple:
@@ -604,6 +725,7 @@ class UpdateController:
             if cfg.get("close_on_launch", False)
             else ""
         )
+        proxies = self._maybe_start_warp(cfg)
         try:
             pid, pgid, proc = umu.launch(
                 client_dir,
@@ -620,6 +742,7 @@ class UpdateController:
                     "umu_skip_builtin_dxvk", False
                 ),
                 output_file=output_file,
+                extra_env=proxies or None,
             )
             with self._lock:
                 self.state.game_running = True
@@ -631,35 +754,30 @@ class UpdateController:
                 threading.Thread(
                     target=self._watch_game, args=(proc, pid), daemon=True
                 ).start()
-            prefix = umu.compute_wine_prefix()
-            self._dispatcher.post(
-                LogMessage(
-                    f"Launched {exe_lbl} via umu (PID {pid}, WINEPREFIX "
-                    f"{prefix}).\n",
-                    "ok",
-                )
+            prefix = os.path.join(data_dir(), "wineprefix")
+            self._announce(
+                f"Launched {exe_lbl} via umu (PID {pid}, WINEPREFIX "
+                f"{prefix}).\n",
+                "ok",
             )
             if output_file:
-                self._dispatcher.post(
-                    LogMessage(
-                        "Launcher will close on launch — game output "
-                        f"goes to {output_file}\n",
-                        "dim",
-                    )
+                self._announce(
+                    "Launcher will close on launch — game output "
+                    f"goes to {output_file}\n",
+                    "dim",
                 )
             self._dispatcher.post(
                 StatusChanged("Running WoW.exe — click TERMINATE to quit")
             )
             return True, False
         except Exception as e:
+            self._stop_warp()
             with self._lock:
                 self.state.game_running = False
                 self._game_proc = None
                 self.state.game_pid = None
                 self.state.game_pgid = None
-            self._dispatcher.post(
-                LogMessage(f"Failed to launch {exe_lbl} via umu: {e}\n", "err")
-            )
+            self._announce(f"Failed to launch {exe_lbl} via umu: {e}\n", "err")
             return False, False
 
     def _watch_game(self, proc, pid: int, source: str = "umu"):
@@ -700,6 +818,7 @@ class UpdateController:
             self._game_proc = None
             self.state.game_pid = None
             self.state.game_pgid = None
+        self._stop_warp()
         self._dispatcher.post(GameExited(pid, code))
         if code in (0, None):
             self._dispatcher.post(StatusChanged("Game exited."))
@@ -707,19 +826,28 @@ class UpdateController:
             self._dispatcher.post(StatusChanged(f"Game exited (code {code})."))
 
     def _game_tree_alive(self, pid: int, pgid: int) -> bool:
-        """Whether the umu game tree is still running (Linux only)."""
+        """Whether the umu game tree is still running (Linux only).
+
+        Hands the stored Popen handle to the service check so wrapper
+        liveness comes from ``poll()`` — a recycled pid can no longer
+        read as a running game."""
+        with self._lock:
+            proc = self._game_proc
         try:
             from ..services import umu
 
-            return umu.game_process_alive(pid, pgid)
+            return umu.game_process_alive(pid, pgid, proc)
         except Exception:
             return True
 
     def _wait_umu_exit(self, proc, pid: int, pgid: int) -> int | None:
-        """Wrapper exit code once the umu game tree is dead (poll 0.5 s,
-        cap 5 min). ``wait()`` runs on its own thread: the wrapper may
-        linger after the game dies or exit while Proton children outlive
-        it — tree death alone flips TERMINATE."""
+        """Wrapper exit code once the umu game tree is dead (unbounded poll).
+
+        ``wait()`` runs on its own thread: the wrapper may linger after the
+        game dies or exit while Proton children outlive it — tree death alone
+        flips TERMINATE, however long the session runs (a cap here used to
+        flip sessions past 5 minutes back to PLAY mid-game). Only the
+        post-death wait for the wrapper's own exit code is bounded."""
         import time
 
         code_holder: list[int | None] = []
@@ -731,11 +859,13 @@ class UpdateController:
                 code_holder.append(None)
 
         threading.Thread(target=_wait_proc, daemon=True).start()
-        deadline = time.monotonic() + 300.0
-        while time.monotonic() < deadline:
-            if not self._game_tree_alive(pid, pgid):
-                break
+        while self._game_tree_alive(pid, pgid):
             time.sleep(0.5)
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if code_holder:
+                break
+            time.sleep(0.05)
         return code_holder[0] if code_holder else None
 
     def _drain_child_output(self, proc, source: str = "umu"):
@@ -800,9 +930,7 @@ class UpdateController:
             pid = self.state.game_pid
             pgid = self.state.game_pgid
             proc = self._game_proc
-        self._dispatcher.post(
-            LogMessage(f"Terminating game (PID {pid})…\n", "acct")
-        )
+        self._announce(f"Terminating game (PID {pid})…\n", "acct")
 
         def _killer():
             if is_linux():
@@ -812,9 +940,7 @@ class UpdateController:
                     assert pid is not None and pgid is not None
                     umu.kill_game(pid, pgid)
                 except Exception as e:
-                    self._dispatcher.post(
-                        LogMessage(f"Failed to terminate game: {e}\n", "err")
-                    )
+                    self._announce(f"Failed to terminate game: {e}\n", "err")
                 return
             try:
                 assert proc is not None
@@ -839,9 +965,7 @@ class UpdateController:
                 except Exception:
                     pass
             except Exception as e:
-                self._dispatcher.post(
-                    LogMessage(f"Failed to terminate game: {e}\n", "err")
-                )
+                self._announce(f"Failed to terminate game: {e}\n", "err")
 
         threading.Thread(target=_killer, daemon=True).start()
         return True

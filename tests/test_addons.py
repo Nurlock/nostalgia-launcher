@@ -647,7 +647,13 @@ def test_git_ls_remote_parses_head(monkeypatch):
         git_archive.ls_remote_sha("https://github.com/a/b", None) == "ab" * 20
     )
     args, kwargs = calls[0]
-    assert args[0] == ["git", "ls-remote", "https://github.com/a/b", "HEAD"]
+    assert args[0] == [
+        "git",
+        "ls-remote",
+        "https://github.com/a/b",
+        "--",
+        "HEAD",
+    ]
     assert kwargs.get("env", {}).get("GIT_TERMINAL_PROMPT") == "0"
     assert "LD_LIBRARY_PATH" not in kwargs.get("env", {})
 

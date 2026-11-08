@@ -321,6 +321,29 @@ def test_set_umu_gamemode_persists(cfg, fakes):
     assert cfg["launch"]["umu_gamemode"] is True
 
 
+def test_set_warp_enabled_persists(cfg, fakes):
+    c = SettingsController(
+        fakes.dispatcher, fakes.updater, fakes.mods, fakes.addons, fakes.news
+    )
+    assert c.launch.warp_enabled is False
+    c.set_warp_enabled(True)
+    assert cfg["launch"]["warp_enabled"] is True
+    assert c.launch.warp_enabled is True
+    assert c.warp_enabled() is True
+    c.set_warp_enabled(False)
+    assert cfg["launch"]["warp_enabled"] is False
+
+
+def test_warp_enabled_reads_env_opt_in(cfg, fakes, monkeypatch):
+    c = SettingsController(
+        fakes.dispatcher, fakes.updater, fakes.mods, fakes.addons, fakes.news
+    )
+    assert c.warp_enabled() is False
+    monkeypatch.setenv("NOSTALGIA_WARP", "1")
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    assert c.warp_enabled() is True
+
+
 def test_set_umu_wayland_persists(cfg, fakes):
     c = SettingsController(
         fakes.dispatcher, fakes.updater, fakes.mods, fakes.addons, fakes.news

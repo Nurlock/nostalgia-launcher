@@ -32,6 +32,11 @@ def test_clean_system_env_scrubs_bundled_vars(monkeypatch):
     assert env.get("HOME") == "/home/tester"
 
 
+def test_clean_system_env_scrubs_warp_key(monkeypatch):
+    monkeypatch.setenv("NOSTALGIA_WARP_KEY", "PRIV=")
+    assert "NOSTALGIA_WARP_KEY" not in clean_system_env()
+
+
 def test_clean_system_env_layers_extra(monkeypatch):
     monkeypatch.setenv("LD_LIBRARY_PATH", "/appimage/_internal")
     env = clean_system_env({"GIT_TERMINAL_PROMPT": "0"})

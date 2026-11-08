@@ -27,10 +27,11 @@ uv run pyinstaller --noconfirm --clean NostalgiaLauncher.spec        # Windows o
   (`lipo -archs` verifies both arm64+x86_64 and fails otherwise). UPX is off in
   `NostalgiaLauncher-macos.spec` (unsupported on macOS); the `.icns` is built
   by `build-icons.sh` from `packaging/icons/NostalgiaLauncher.png`. The PNG
-  is human-managed from `NostalgiaLauncher.svg` (the `generate_icon.py` "N"
-  monogram is legacy and not used — all platforms share the same vector-sourced
-  icon). The result is unsigned by default — signing/notarization are opt-in
-  via env vars.
+  and the root `NostalgiaLauncher.ico` are rendered from
+  `NostalgiaLauncher-IconNoText.svg` via `packaging/icons/render_from_svg.py`
+  (PySide6 QSvgRenderer, no extra deps) — all platforms share the same
+  vector-sourced icon. The result is unsigned by default — signing/notarization
+  are opt-in via env vars.
 
 ## Vendored 7z (Windows/macOS bundles)
 

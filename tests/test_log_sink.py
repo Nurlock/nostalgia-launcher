@@ -88,6 +88,27 @@ def test_configure_file_appends_every_line(log_file):
         assert fh.read() == "one\ntwo\n"
 
 
+def test_mirror_appends_without_posting(log_file, monkeypatch):
+    from unittest.mock import Mock
+
+    from nostalgia_launcher.core.log_sink import mirror
+
+    posted = Mock()
+    monkeypatch.setattr(log_sink, "_dispatcher", posted)
+    mirror("mirrored\n")
+    assert posted.post.call_count == 0
+    with open(log_file, encoding="utf-8") as fh:
+        assert fh.read() == "mirrored\n"
+
+
+def test_mirror_unconfigured_writes_nothing():
+    from nostalgia_launcher.core.log_sink import mirror
+
+    assert log_sink._sink_path is None
+    mirror("quiet")
+    assert not os.path.exists(log_sink.current_log_path())
+
+
 def test_read_lines_defaults_to_log_file(tmp_path, monkeypatch):
     path = tmp_path / "launcher.log"
     path.write_text("kept\n", encoding="utf-8")

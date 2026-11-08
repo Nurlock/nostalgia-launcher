@@ -23,4 +23,4 @@ def torrent_allowed(cfg) -> bool:
     try:
         return bool(cfg.torrent_update_allowed())
     except Exception:
-        return True
+        return False

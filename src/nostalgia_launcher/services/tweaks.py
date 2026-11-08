@@ -360,6 +360,8 @@ def write_config_wtf(client_dir: str):
         log("Config.wtf written.", "ok")
     except Exception as e:
         log(f"Could not write Config.wtf: {e}", "err")
+        return False
+    return True
 
 
 def write_realmlist_wtf(client_dir: str):
@@ -375,7 +377,7 @@ def write_realmlist_wtf(client_dir: str):
 
         srv = launcher.realm() or _host_of(launcher.server_url())
         if not srv:
-            return
+            return False
         with open(
             os.path.join(client_dir, "realmlist.wtf"),
             "w",
@@ -383,8 +385,10 @@ def write_realmlist_wtf(client_dir: str):
         ) as f:
             f.write(f"SET realmlist {_wtf_str(srv)}\n")
         log("realmlist.wtf written.", "ok")
+        return True
     except Exception as e:
         log(f"Could not write realmlist.wtf: {e}", "err")
+        return False
 
 
 def update_config_wtf(client_dir: str):
@@ -438,9 +442,9 @@ def update_config_wtf(client_dir: str):
         return
 
     # Always keep realmlist.wtf in sync with the configured realm.
-    try:
-        write_realmlist_wtf(client_dir)
-    except Exception:
-        pass
+    # Its own I/O errors are logged inside; skip the success line when
+    # it failed so a half-synced update never reports success.
+    if not write_realmlist_wtf(client_dir):
+        return
 
     log(f"  Config.wtf updated: realmList={srv}", "dim")

@@ -92,6 +92,17 @@ def _append_file(msg: str):
         pass
 
 
+def mirror(msg: str) -> None:
+    """Append without posting: for events already on the dispatcher.
+
+    Controller `LogMessage` posts are GUI-only; launch-lifecycle ones
+    mirror through here so headless `--print-log` sees them. No-op
+    unless the sink is configured (tests never touch disk)."""
+    if _sink_path is not None:
+        with _lock:
+            _append_file(msg)
+
+
 def log(msg: str, tag: str = ""):
     """Append a line to the app log. Thread-safe; safe to call before the
     GUI exists (the event is buffered until the dispatcher is set) and

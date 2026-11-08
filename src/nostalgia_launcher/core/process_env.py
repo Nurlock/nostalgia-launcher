@@ -16,7 +16,10 @@ environment is part of the launch contract.
 import os
 
 # Vars that must never leak into a system-binary child.
+# NOSTALGIA_WARP_KEY is the tunnel's private key: the game launch
+# passes proxies instead, so the raw secret stays out of children.
 SCRUBBED_ENV_VARS = (
+    "NOSTALGIA_WARP_KEY",
     "LD_LIBRARY_PATH",
     "LD_PRELOAD",
     "PYTHONHOME",

@@ -126,7 +126,6 @@ def _extract_zip(archive: str, dest: str) -> None:
                         f" {member}"
                     )
                 parent = os.path.dirname(target)
-                parent = os.path.dirname(target)
                 if parent:
                     os.makedirs(parent, exist_ok=True)
                     parent_real = os.path.realpath(parent)

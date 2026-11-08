@@ -1,0 +1,858 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="309.71506"
+   height="310.02954"
+   viewBox="390 -5 573.20399 573.3423"
+   role="img"
+   aria-label="Nostalgia Launcher logo — with Epic Dwarf Hammer and Elven Mace"
+   id="svg28"
+   version="1.1"
+   sodipodi:docname="NostalgiaLauncher-IconNoText.svg"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="3.7254514"
+     inkscape:cx="154.88056"
+     inkscape:cy="155.01477"
+     inkscape:window-width="2560"
+     inkscape:window-height="1364"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="original-sword-and-shield" />
+  <defs
+     id="defs_gradients">
+    <!-- Original Palette & Shared Gradients (ObjectBoundingBox for easy editing/transforming) -->
+    <linearGradient
+       id="gold"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#ffe7a1"
+         id="stop1" />
+      <stop
+         offset="0.38"
+         stop-color="#e8a62f"
+         id="stop2" />
+      <stop
+         offset="0.72"
+         stop-color="#a96112"
+         id="stop3" />
+      <stop
+         offset="1"
+         stop-color="#61340c"
+         id="stop4" />
+    </linearGradient>
+    <linearGradient
+       id="goldLite"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#fff1bd"
+         id="stop5" />
+      <stop
+         offset="0.5"
+         stop-color="#d89022"
+         id="stop6" />
+      <stop
+         offset="1"
+         stop-color="#7a400b"
+         id="stop7" />
+    </linearGradient>
+    <linearGradient
+       id="steel"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="0">
+      <stop
+         offset="0"
+         stop-color="#58616a"
+         id="stop8" />
+      <stop
+         offset="0.25"
+         stop-color="#f2eee1"
+         id="stop9" />
+      <stop
+         offset="0.55"
+         stop-color="#8d969e"
+         id="stop10" />
+      <stop
+         offset="1"
+         stop-color="#343c45"
+         id="stop11" />
+    </linearGradient>
+    <linearGradient
+       id="steelBevel"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#f2eee1"
+         id="stop12" />
+      <stop
+         offset="0.3"
+         stop-color="#9aa3ab"
+         id="stop13" />
+      <stop
+         offset="0.75"
+         stop-color="#58616a"
+         id="stop14" />
+      <stop
+         offset="1"
+         stop-color="#2f363e"
+         id="stop15" />
+    </linearGradient>
+    <linearGradient
+       id="dwarfIron"
+       x1="426.28839"
+       y1="97.211304"
+       x2="426.28839"
+       y2="252.74896"
+       gradientTransform="scale(1.3887312,0.72008175)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#68727c"
+         id="stop16" />
+      <stop
+         offset="0.45"
+         stop-color="#434b54"
+         id="stop17" />
+      <stop
+         offset="1"
+         stop-color="#23282d"
+         id="stop18" />
+    </linearGradient>
+    <linearGradient
+       id="elfSilver"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#ffffff"
+         id="stop19" />
+      <stop
+         offset="0.32"
+         stop-color="#dceaf7"
+         id="stop20" />
+      <stop
+         offset="0.68"
+         stop-color="#89a4bf"
+         id="stop21" />
+      <stop
+         offset="1"
+         stop-color="#455a73"
+         id="stop22" />
+    </linearGradient>
+    <linearGradient
+       id="elfEmerald"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#6ef7be"
+         id="stop23" />
+      <stop
+         offset="0.48"
+         stop-color="#1aa66b"
+         id="stop24" />
+      <stop
+         offset="1"
+         stop-color="#0a4f32"
+         id="stop25" />
+    </linearGradient>
+    <linearGradient
+       id="navy"
+       x1="591.86963"
+       y1="156.37276"
+       x2="591.86963"
+       y2="570.7384"
+       gradientTransform="matrix(0.87698521,0,0,1.0748219,-0.75718077,10.617593)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         stop-color="#31547d"
+         offset="0"
+         id="stop26" />
+      <stop
+         offset="1"
+         stop-color="#0d2039"
+         id="stop27" />
+    </linearGradient>
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient27"
+       x1="474.44669"
+       y1="821.76788"
+       x2="474.44669"
+       y2="858.00665"
+       gradientTransform="scale(1.4211291,0.70366585)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#goldLite"
+       id="linearGradient28"
+       x1="595.95856"
+       y1="664.04626"
+       x2="660.58038"
+       y2="728.66809"
+       gradientTransform="scale(1.1141716,0.89752784)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#steel"
+       id="linearGradient29"
+       x1="804.81824"
+       y1="0.00072814489"
+       x2="857.04791"
+       y2="0.00072814489"
+       gradientTransform="scale(0.84242645,1.1870473)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient30"
+       x1="441.048"
+       y1="72.917236"
+       x2="441.048"
+       y2="112.41407"
+       gradientTransform="scale(1.5191091,0.65828059)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient31"
+       x1="472.34857"
+       y1="254.55783"
+       x2="472.34857"
+       y2="299.81256"
+       gradientTransform="scale(1.4142101,0.70710849)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#steelBevel"
+       id="linearGradient32"
+       x1="403.21857"
+       y1="130.32098"
+       x2="403.21857"
+       y2="250.44273"
+       gradientTransform="scale(1.5109671,0.66182776)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#steelBevel"
+       id="linearGradient33"
+       x1="887.62433"
+       y1="31.986565"
+       x2="887.62433"
+       y2="123.02496"
+       gradientTransform="scale(0.61512509,1.6256856)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#steelBevel"
+       id="linearGradient34"
+       x1="1297.2971"
+       y1="31.986565"
+       x2="1297.2971"
+       y2="123.02496"
+       gradientTransform="scale(0.61512509,1.6256856)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient35"
+       x1="1288.243"
+       y1="30.708344"
+       x2="1288.243"
+       y2="84.362328"
+       gradientTransform="scale(0.45662965,2.1899585)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient36"
+       x1="1724.0449"
+       y1="30.708344"
+       x2="1724.0449"
+       y2="84.362328"
+       gradientTransform="scale(0.45662965,2.1899585)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#goldLite"
+       id="linearGradient37"
+       x1="665.76959"
+       y1="74.70179"
+       x2="763.24878"
+       y2="172.18097"
+       gradientTransform="scale(0.97969349,1.0207274)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient38"
+       x1="474.1604"
+       y1="819.21912"
+       x2="474.1604"
+       y2="849.26904"
+       gradientTransform="scale(1.4309504,0.69883624)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#goldLite"
+       id="linearGradient39"
+       x1="829.66699"
+       y1="471.34717"
+       x2="893.05487"
+       y2="534.73505"
+       gradientTransform="scale(0.81266745,1.2305156)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#elfEmerald"
+       id="linearGradient40"
+       x1="929.0459"
+       y1="443.48944"
+       x2="958.71063"
+       y2="473.15417"
+       gradientTransform="scale(0.74162108,1.3483975)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#goldLite"
+       id="linearGradient41"
+       x1="374.53613"
+       y1="252.46269"
+       x2="479.45444"
+       y2="357.38101"
+       gradientTransform="scale(1.6393624,0.60999326)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient42"
+       x1="455.46109"
+       y1="302.36517"
+       x2="455.46109"
+       y2="337.15381"
+       gradientTransform="scale(1.480368,0.67550772)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#elfSilver"
+       id="linearGradient43"
+       x1="784.41144"
+       y1="8.9521818"
+       x2="914.21442"
+       y2="138.75516"
+       gradientTransform="scale(0.74599565,1.3404904)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#elfSilver"
+       id="linearGradient44"
+       x1="962.47217"
+       y1="8.9521818"
+       x2="1092.2751"
+       y2="138.75516"
+       gradientTransform="scale(0.74599565,1.3404904)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#goldLite"
+       id="linearGradient45"
+       x1="967.6145"
+       y1="1.4428946"
+       x2="1078.86"
+       y2="112.68839"
+       gradientTransform="scale(0.64118604,1.5596098)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#goldLite"
+       id="linearGradient46"
+       x1="1104.5936"
+       y1="1.4428946"
+       x2="1215.8391"
+       y2="112.68839"
+       gradientTransform="scale(0.64118604,1.5596098)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#elfSilver"
+       id="linearGradient47"
+       x1="1182.0146"
+       y1="-9.0545464"
+       x2="1291.8042"
+       y2="100.73494"
+       gradientTransform="scale(0.56592665,1.7670135)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient48"
+       x1="1002.0998"
+       y1="32.446911"
+       x2="1002.0998"
+       y2="110.11723"
+       gradientTransform="scale(0.67247238,1.4870499)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#elfEmerald"
+       id="linearGradient49"
+       x1="1085.4618"
+       y1="42.250221"
+       x2="1134.6486"
+       y2="91.436829"
+       gradientTransform="scale(0.6305993,1.5857931)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#gold"
+       id="linearGradient50"
+       x1="662"
+       y1="5"
+       x2="662"
+       y2="81"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#goldLite"
+       id="linearGradient51"
+       x1="331.53186"
+       y1="251.89767"
+       x2="479.90952"
+       y2="400.27533"
+       gradientTransform="matrix(1.7253249,0,0,0.57960097,-0.49561722,-19.789222)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       xlink:href="#steel"
+       id="linearGradient52"
+       x1="2047.7557"
+       y1="59.24535"
+       x2="2205.7429"
+       y2="59.24535"
+       gradientTransform="scale(0.32914083,3.0382132)"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <!-- Main Logo Container -->
+  <g
+     id="logo"
+     stroke="#2a1a0d"
+     stroke-linejoin="round"
+     stroke-linecap="round"
+     transform="matrix(0.99974834,0,0,1.0348104,-9.5312958,-39.95318)">
+    <!-- ========================================================== -->
+    <!-- 1. EPIC DWARF WARHAMMER (BACK LEFT - ROTATED GROUP)        -->
+    <!-- ========================================================== -->
+    <g
+       id="dwarf-warhammer"
+       transform="matrix(0.76602195,-0.64515644,0.64276874,0.7688675,-64.39972,534.83505)">
+      <!-- 1A. Warhammer Shaft & Pommel -->
+      <g
+         id="dwarf-hammer-shaft">
+        <rect
+           id="dwarf-shaft-wood"
+           x="684"
+           y="65"
+           width="32"
+           height="535"
+           fill="#4a2b16"
+           stroke-width="8" />
+        <path
+           id="dwarf-shaft-wraps"
+           d="m 684,455 h 32 m -32,33 h 32 m -32,33 h 32 m -32,33 h 32"
+           stroke="#7c4a20"
+           stroke-width="6"
+           fill="none" />
+        <rect
+           id="dwarf-pommel-collar"
+           x="678"
+           y="582"
+           width="44"
+           height="18"
+           rx="4"
+           fill="url(#gold)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient27)" />
+        <polygon
+           id="dwarf-pommel-cap"
+           points="700,650 668,624 680,600 720,600 732,624 "
+           fill="url(#goldLite)"
+           stroke-width="8"
+           style="fill:url(#linearGradient28)" />
+        <polygon
+           id="dwarf-pommel-gem"
+           points="700,637 685,623 700,609 715,623 "
+           fill="#183e69"
+           stroke="#8d5316"
+           stroke-width="4" />
+      </g>
+      <!-- 1B. Warhammer Head Assembly -->
+      <g
+         id="dwarf-hammer-head">
+        <!-- Top Armour-Piercing Spike -->
+        <polygon
+           id="dwarf-top-spike"
+           points="682,58 700,4 718,58 "
+           fill="url(#steel)"
+           stroke-width="8"
+           style="fill:url(#linearGradient29)" />
+        <path
+           id="dwarf-top-spike-highlight"
+           d="M 700,16 V 52"
+           stroke="#ffffff"
+           stroke-opacity="0.65"
+           stroke-width="3.5" />
+        <!-- Top & Bottom Shaft Mounting Collars -->
+        <rect
+           id="dwarf-head-collar-top"
+           x="674"
+           y="52"
+           width="52"
+           height="18"
+           rx="3"
+           fill="url(#gold)"
+           stroke-width="8"
+           style="fill:url(#linearGradient30)" />
+        <polygon
+           id="dwarf-head-collar-bottom"
+           points="720,208 680,208 672,184 728,184 "
+           fill="url(#gold)"
+           stroke-width="8"
+           style="fill:url(#linearGradient31)" />
+        <!-- Forged Dark-Iron Core Block -->
+        <polygon
+           id="dwarf-head-core-block"
+           points="748,85 804,74 804,178 748,167 652,167 596,178 596,74 652,85 "
+           fill="url(#dwarfIron)"
+           stroke-width="8"
+           style="fill:url(#dwarfIron)" />
+        <!-- Inner Beveled Steel Faceplate -->
+        <polygon
+           id="dwarf-head-inner-plate"
+           points="746,96 788,89 788,163 746,156 654,156 612,163 612,89 654,96 "
+           fill="url(#steelBevel)"
+           stroke="#2a1a0d"
+           stroke-width="5.5"
+           style="fill:url(#linearGradient32)" />
+        <!-- Left Chiseled Striking Face (Main Maul Bumper) -->
+        <polygon
+           id="dwarf-striking-face-left"
+           points="564,56 598,70 598,182 564,196 550,174 550,78 "
+           fill="url(#steelBevel)"
+           stroke-width="8"
+           style="fill:url(#linearGradient33)" />
+        <path
+           id="dwarf-striking-face-left-shine"
+           d="m 564,68 -6,14 v 86"
+           stroke="#ffffff"
+           stroke-opacity="0.6"
+           stroke-width="3.5"
+           fill="none" />
+        <!-- Right Striking Face (Symmetrical Heavy Double-Maul) -->
+        <polygon
+           id="dwarf-striking-face-right"
+           points="836,56 802,70 802,182 836,196 850,174 850,78 "
+           fill="url(#steelBevel)"
+           stroke-width="8"
+           style="fill:url(#linearGradient34)" />
+        <!-- Heavy Golden Dwarven Cheek Bands -->
+        <rect
+           id="dwarf-cheek-band-left"
+           x="592"
+           y="71"
+           width="17"
+           height="110"
+           rx="2"
+           fill="url(#gold)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient35)" />
+        <rect
+           id="dwarf-cheek-band-right"
+           x="791"
+           y="71"
+           width="17"
+           height="110"
+           rx="2"
+           fill="url(#gold)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient36)" />
+        <!-- Forged Gold Rivets -->
+        <circle
+           id="dwarf-rivet-tl"
+           cx="628"
+           cy="108"
+           r="5.5"
+           fill="#ffe7a1"
+           stroke="#2a1a0d"
+           stroke-width="3.5" />
+        <circle
+           id="dwarf-rivet-bl"
+           cx="628"
+           cy="144"
+           r="5.5"
+           fill="#ffe7a1"
+           stroke="#2a1a0d"
+           stroke-width="3.5" />
+        <circle
+           id="dwarf-rivet-tr"
+           cx="772"
+           cy="108"
+           r="5.5"
+           fill="#ffe7a1"
+           stroke="#2a1a0d"
+           stroke-width="3.5" />
+        <circle
+           id="dwarf-rivet-br"
+           cx="772"
+           cy="144"
+           r="5.5"
+           fill="#ffe7a1"
+           stroke="#2a1a0d"
+           stroke-width="3.5" />
+        <!-- Central Dwarven Diamond Rune Crest -->
+        <polygon
+           id="dwarf-rune-frame"
+           points="700,172 656,126 700,80 744,126 "
+           fill="url(#goldLite)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient37)" />
+        <polygon
+           id="dwarf-rune-gem-outer"
+           points="700,155 673,126 700,97 727,126 "
+           fill="#15559a"
+           stroke="#8d5316"
+           stroke-width="4.5" />
+        <polygon
+           id="dwarf-rune-gem-inner"
+           points="700,144 684,126 700,108 716,126 "
+           fill="#2c86d1"
+           stroke="none"
+           opacity="0.85" />
+      </g>
+    </g>
+    <!-- ========================================================== -->
+    <!-- 2. ELVEN MACE (BACK RIGHT - ROTATED GROUP)                 -->
+    <!-- ========================================================== -->
+    <g
+       id="elven-mace"
+       transform="rotate(40,700,355)">
+      <!-- 2A. Elven Mace Haft & Pommel -->
+      <g
+         id="elven-mace-shaft">
+        <polygon
+           id="elven-shaft-wood"
+           points="713,130 709,588 691,588 687,130 "
+           fill="#3b2313"
+           stroke-width="8" />
+        <!-- Spiral Gold Ribbon Grip -->
+        <path
+           id="elven-shaft-ribbon"
+           d="m 689,440 22,28 m 0,0 -22,28 m 0,0 22,28 m 0,0 -22,28 m 0,0 21,26"
+           stroke="#e8a62f"
+           stroke-width="5.5"
+           fill="none" />
+        <!-- Pommel Gold Collar -->
+        <rect
+           id="elven-pommel-collar"
+           x="682"
+           y="576"
+           width="36"
+           height="14"
+           rx="5"
+           fill="url(#gold)"
+           stroke-width="7"
+           style="fill:url(#linearGradient38)" />
+        <!-- Leaf-Shaped Elven Pommel -->
+        <path
+           id="elven-pommel-blade"
+           d="m 700,584 c 28,14 30,40 0,70 -30,-30 -28,-56 0,-70 z"
+           fill="url(#goldLite)"
+           stroke-width="8"
+           style="fill:url(#linearGradient39)" />
+        <path
+           id="elven-pommel-emerald"
+           d="m 700,600 c 12,9 12,24 0,36 -12,-12 -12,-27 0,-36 z"
+           fill="url(#elfEmerald)"
+           stroke="#0a4f32"
+           stroke-width="4"
+           style="fill:url(#linearGradient40)" />
+      </g>
+      <!-- 2B. Elven Mace Head Assembly -->
+      <g
+         id="elven-mace-head">
+        <!-- Sweeping Lotus Calyx Base Guard -->
+        <path
+           id="elven-lotus-guard"
+           d="m 680,214 c -26,-8 -50,-28 -62,-56 28,16 52,22 67,20 h 30 c 15,2 39,-4 67,-20 -12,28 -36,48 -62,56 z"
+           fill="url(#goldLite)"
+           stroke-width="8"
+           style="fill:url(#linearGradient41)" />
+        <rect
+           id="elven-neck-ring"
+           x="678"
+           y="208"
+           width="44"
+           height="16"
+           rx="6"
+           fill="url(#gold)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient42)" />
+        <!-- Outer Silver Crescent Wing-Flanges (Left & Right) -->
+        <path
+           id="elven-wing-outer-left"
+           d="m 676,182 c -66,-8 -92,-50 -86,-98 4,-34 34,-58 74,-68 -26,28 -30,60 -10,84 -20,16 -12,52 24,68 z"
+           fill="url(#elfSilver)"
+           stroke-width="8"
+           style="fill:url(#linearGradient43)" />
+        <path
+           id="elven-wing-outer-right"
+           d="m 724,182 c 66,-8 92,-50 86,-98 -4,-34 -34,-58 -74,-68 26,28 30,60 10,84 20,16 12,52 -24,68 z"
+           fill="url(#elfSilver)"
+           stroke-width="8"
+           style="fill:url(#linearGradient44)" />
+        <!-- Inner Sun-Gold Filigree Flanges (Left & Right) -->
+        <path
+           id="elven-wing-inner-left"
+           d="m 684,172 c -48,-14 -66,-52 -58,-96 6,-34 30,-58 60,-70 -18,34 -20,102 2,150 z"
+           fill="url(#goldLite)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient45)" />
+        <path
+           id="elven-wing-inner-right"
+           d="m 716,172 c 48,-14 66,-52 58,-96 -6,-34 -30,-58 -60,-70 18,34 20,102 -2,150 z"
+           fill="url(#goldLite)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient46)" />
+        <!-- Central Silver Spear-Crown Finial -->
+        <path
+           id="elven-central-crown-spire"
+           d="m 700,-12 c 24,48 34,104 22,186 H 678 C 666,92 676,36 700,-12 Z"
+           fill="url(#elfSilver)"
+           stroke-width="8"
+           style="fill:url(#linearGradient47)" />
+        <path
+           id="elven-spire-highlight"
+           d="M 700,4 V 166"
+           stroke="#ffffff"
+           stroke-opacity="0.75"
+           stroke-width="3.5" />
+        <!-- Central Elven Tear-Gem Medallion -->
+        <path
+           id="elven-gem-setting"
+           d="m 700,52 c 30,32 30,76 0,108 -30,-32 -30,-76 0,-108 z"
+           fill="url(#gold)"
+           stroke-width="7.5"
+           style="fill:url(#linearGradient48)" />
+        <path
+           id="elven-gem-emerald"
+           d="m 700,69 c 18,21 18,53 0,74 -18,-21 -18,-53 0,-74 z"
+           fill="url(#elfEmerald)"
+           stroke="#0a4f32"
+           stroke-width="4"
+           style="fill:url(#linearGradient49)" />
+        <path
+           id="elven-gem-glint"
+           d="m 695,84 c 5,10 5,28 0,38"
+           stroke="#ffffff"
+           stroke-opacity="0.85"
+           stroke-width="3"
+           fill="none" />
+      </g>
+    </g>
+    <!-- ========================================================== -->
+    <!-- 3. ORIGINAL SWORD & SHIELD (FOREGROUND)                    -->
+    <!-- ========================================================== -->
+    <g
+       id="original-sword-and-shield"
+       transform="matrix(1.0001609,0,0,0.9885651,-0.11266347,0.08621668)">
+      <!-- 3A. Sword Hilt & Crossguard -->
+      <!-- 3B. Shield -->
+      <g
+         id="shield"
+         transform="matrix(1.0635174,0,0,0.95040113,-45.704176,-0.97547487)">
+        <path
+           d="m 700,184.8107 175.1893,65.91091 -25.02705,207.14856 Q 796.10384,566.15238 700,617.93952 603.89616,566.15238 549.83775,457.87017 L 524.8107,250.72161 Z"
+           fill="url(#navy)"
+           stroke-width="12.6214"
+           id="shield-body"
+           style="fill:url(#navy)" />
+        <path
+           d="m 700,206.46714 148.16009,56.49507 -23.02488,184.55054 Q 783.08978,533.19693 700,582.15931 616.91022,533.19693 574.86479,447.51275 L 551.83991,262.96221 Z"
+           fill="none"
+           stroke="#c98623"
+           stroke-width="5.82526"
+           opacity="0.9"
+           id="shield-inner-border" />
+      </g>
+      <!-- 3C. Sword Blade & Center Gem -->
+      <g
+         id="sword-blade-and-gem"
+         transform="matrix(1.0023214,0,0,0.85334696,-1.6242596,29.597373)">
+        <g
+           id="sword-hilt"
+           transform="translate(1.9771446e-6)">
+          <path
+             d="m 678,52 q 22,-18 44,0 l -5,143 h -34 z"
+             fill="#4a2b16"
+             stroke-width="8"
+             id="sword-grip" />
+          <path
+             d="m 683,72 h 34 m -35,30 h 35 m -36,30 h 36"
+             stroke="#7c4a20"
+             stroke-width="6"
+             id="sword-grip-wraps" />
+          <circle
+             cx="700"
+             cy="43"
+             r="34"
+             fill="url(#gold)"
+             stroke-width="8"
+             id="sword-pommel-outer"
+             style="fill:url(#linearGradient50)" />
+          <circle
+             cx="700"
+             cy="43"
+             r="19"
+             fill="#183e69"
+             stroke="#8d5316"
+             stroke-width="5"
+             id="sword-pommel-inner" />
+          <path
+             d="m 699.50438,130.21078 -34,30 -72,2 -18,31 30,15 76,-22 h 36 l 76,22 30,-15 -18,-31 -72,-2 z"
+             fill="url(#goldLite)"
+             stroke-width="8"
+             id="sword-crossguard"
+             style="fill:url(#linearGradient51)" />
+        </g>
+        <path
+           d="m 678,184 h 44 V 551 L 700,656 678,551 Z"
+           fill="url(#steel)"
+           stroke-width="8"
+           id="sword-blade"
+           style="fill:url(#linearGradient52)" />
+        <path
+           d="M 700,193.99307 V 622.2351"
+           stroke="#ffffff"
+           stroke-opacity="0.65"
+           stroke-width="3.99182"
+           id="sword-blade-ridge" />
+        <path
+           d="m 700,142 34,34 -34,34 -34,-34 z"
+           fill="#15559a"
+           stroke="#dca23b"
+           stroke-width="8"
+           id="sword-gem-outer" />
+        <path
+           d="m 700,157 18,19 -18,18 -18,-18 z"
+           fill="#2c86d1"
+           opacity="0.8"
+           stroke="none"
+           id="sword-gem-inner" />
+      </g>
+    </g>
+  </g>
+</svg>

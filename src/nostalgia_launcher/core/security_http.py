@@ -125,6 +125,17 @@ def secure_urlopen(req, timeout, **_ignored):
         raise
     try:
         _validate(resp)
+        if resp.status_code >= 400:
+            import urllib.error
+            from email.message import Message
+
+            raise urllib.error.HTTPError(
+                url,
+                resp.status_code,
+                f"HTTP {resp.status_code}",
+                Message(),
+                None,
+            )
     except Exception:
         resp.close()
         client.close()

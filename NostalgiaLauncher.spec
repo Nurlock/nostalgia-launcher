@@ -42,6 +42,19 @@ else:
         "(run packaging/fetch-7z-windows.py); "
         "build falls back to system 7z"
     )
+# wireproxy sidecar (opt-in WARP tunnel): staged by packaging/fetch-wireproxy.py.
+# Missing Boydton build falls back to PATH at runtime.
+_wireproxy_bin = os.path.join("packaging", "vendor", "wireproxy", "wireproxy.exe")
+if os.path.isfile(_wireproxy_bin):
+    binaries.append((_wireproxy_bin, "."))
+else:
+    print(
+        "WARNING: wireproxy not staged (run packaging/fetch-wireproxy.py); "
+        "build falls back to PATH"
+    )
+_wireproxy_license = os.path.join("packaging", "vendor", "wireproxy", "LICENSE")
+if os.path.isfile(_wireproxy_license):
+    datas.append((_wireproxy_license, "licenses"))
 if os.path.isfile(_seven_z_license):
     datas.append((_seven_z_license, "licenses"))
 else:

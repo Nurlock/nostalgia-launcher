@@ -166,6 +166,7 @@ class QmlNostalgiaLauncherApp:
         # tab's operation lands so a Browse install can be followed by
         # another (busy clears, installed entries leave the list).
         self._browse_on_settle = {}
+        self._wired_content: set = set()
         self._wire_content(
             self._mods, self._hub.mods, "mods", bridge.modsLoaded
         )
@@ -411,6 +412,11 @@ class QmlNostalgiaLauncherApp:
 
     def _wire_content(self, model, ctrl, kind, loaded_signal):
         """Snapshot provider + action callbacks for one content tab."""
+        wired = getattr(self, "_wired_content", None)
+        if wired is None:
+            wired = self._wired_content = set()
+        if kind in wired:
+            return
         if kind == "addons":
 
             def tab_entries(state):
@@ -577,6 +583,7 @@ class QmlNostalgiaLauncherApp:
         model.browseRequested.connect(
             lambda _b=dialog: self._open_browse_dialog(_b)
         )
+        self._wired_content.add(kind)
         self._browse_on_settle[kind] = (browse, _refresh_browse)
 
     def _after_content_op(self, model, kind: str, op_kind: str):
@@ -650,9 +657,15 @@ class QmlNostalgiaLauncherApp:
             if install_dir:
                 from ...core import config_store
 
-                config_store.apply_confirmed_out_dir(
+                if not config_store.apply_confirmed_out_dir(
                     prof.state_path(), install_dir
-                )
+                ):
+                    self._profile_error(
+                        "Could not save the game folder — "
+                        "switch to the profile and set it in Settings."
+                    )
+                    self._settings.refresh()
+                    return
         finally:
             profiles.activate(prev_active)
         self._settings.refresh()
@@ -807,6 +820,7 @@ class QmlNostalgiaLauncherApp:
                 ],
                 "clear_wdb": bool(cfg.get("clear_wdb_on_launch", False)),
                 "close_on_launch": bool(cfg.get("close_on_launch", False)),
+                "warp_enabled": settings.warp_enabled(),
                 "client_updates": settings.client_update_enabled,
                 "can_launch": platform_support.can_launch_client(),
                 "is_linux": platform_support.is_linux(),
@@ -844,6 +858,7 @@ class QmlNostalgiaLauncherApp:
             antivirus=settings.allow_through_antivirus,
             clear_wdb=settings.set_clear_wdb,
             close_on_launch=settings.set_close_on_launch,
+            warp_enabled=settings.set_warp_enabled,
             client_updates=settings.set_client_update_enabled,
             addons_default=settings.set_addons_default_enabled,
             mods_default=settings.set_mods_default_enabled,

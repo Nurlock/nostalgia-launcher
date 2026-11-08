@@ -303,9 +303,13 @@ def _first_launch(show_log: bool = False) -> int:
     # confirmed game folder (its own state store).
     install_dir = (chosen.get("install_dir") or "").strip()
     if install_dir:
-        config_store.apply_confirmed_out_dir(
+        if not config_store.apply_confirmed_out_dir(
             profiles.active().state_path(), install_dir
-        )
+        ):
+            sys.stderr.write(
+                "[config] could not persist the game folder — "
+                "set it again in Settings.\n"
+            )
     return _run_backend(show_log)
 
 

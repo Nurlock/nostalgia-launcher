@@ -50,14 +50,16 @@ def load_config() -> dict:
         return {}
 
 
-def save_config(data: dict):
+def save_config(data: dict) -> bool:
     with _CONFIG_LOCK:
         if not config_file:
-            return
+            return False
         try:
             _atomic_write(config_file, json.dumps(data, indent=2))
+            return True
         except Exception as e:
             sys.stderr.write(f"[config] failed to write {config_file}: {e}\n")
+            return False
 
 
 def update_config(mutator):
@@ -72,7 +74,7 @@ def update_config(mutator):
         return cfg
 
 
-def apply_confirmed_out_dir(path: str, out_dir: str) -> None:
+def apply_confirmed_out_dir(path: str, out_dir: str) -> bool:
     """Record a user-confirmed game folder into an explicit state file:
     ``out_dir`` + the ``out_dir_user_set`` flag, wiping the folder-scoped
     install records (mods/addons/assets + probe cache) — the same key
@@ -84,7 +86,7 @@ def apply_confirmed_out_dir(path: str, out_dir: str) -> None:
     through Settings."""
     out_val = os.path.normpath((out_dir or "").strip())
     if not out_val or out_val == ".":
-        return
+        return False
     with _CONFIG_LOCK:
         try:
             with open(path, encoding="utf-8") as f:
@@ -93,15 +95,17 @@ def apply_confirmed_out_dir(path: str, out_dir: str) -> None:
             cfg = {}
         except Exception as e:
             sys.stderr.write(f"[config] failed to read {path}: {e}\n")
-            return
+            return False
         cfg["out_dir"] = out_val
         cfg["out_dir_user_set"] = True
         for key in ("mods", "addons", "assets", "asset_probe_cache"):
             cfg.pop(key, None)
         try:
             _atomic_write(path, json.dumps(cfg, indent=2))
+            return True
         except Exception as e:
             sys.stderr.write(f"[config] failed to write {path}: {e}\n")
+            return False
 
 
 def load_cache() -> dict:

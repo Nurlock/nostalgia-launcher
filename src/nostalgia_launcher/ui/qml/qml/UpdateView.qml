@@ -37,7 +37,9 @@ ScrollView {
                 objectName: "qmlUpdateRecheck"
                 text: "⟳  Force recheck"
                 Accessible.name: "Force recheck"
-                ToolTip.text: "Re-verify every game file from scratch against the torrent snapshot's piece hashes"
+                ToolTip.text: updateState && updateState.updateVia === "manifest"
+                    ? "Re-fetch the manifest and re-hash every listed file against its sha256"
+                    : "Re-verify every game file from scratch against the torrent snapshot's piece hashes"
                 ToolTip.visible: hovered
                 onClicked: updateState.recheck()
             }

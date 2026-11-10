@@ -6,7 +6,6 @@ the stage modules:
 
 - :mod:`stages_manifest` — manifest-overlay path split/tag helpers;
 - :mod:`stages_torrent` — incremental torrent policy;
-- :mod:`stages_static` — server-bundled registry entry paths;
 - :mod:`ownership` — server-base vs community-overlay file ownership
   (server wins collisions, user paths never touched by server syncs).
 """
@@ -39,10 +38,6 @@ from ...state.events import (
     VerificationUpToDate,
 )
 from ..tweaks import write_config_wtf, write_realmlist_wtf
-from ..update_backend.sources import (
-    DownloadSource,  # noqa: F401 (re-export)
-    _download_source,
-)
 from ..update_backend.torrent_update import available as _torrent_lib_available
 from ..update_backend.worker_base import WorkerBase
 from . import stages_manifest as _manifest_stage
@@ -63,6 +58,25 @@ from .ownership import (
 from .ownership import (
     user_paths_from_records as _user_paths_from_records,
 )
+from .scenarios import (
+    DirectDownloadScenario,
+    DownloadSource,  # noqa: F401 (re-export for tests)
+    InitialDownloadScenario,
+    ManifestUpdateScenario,
+    NoUpdateScenario,
+    ServerDownloadScenarios,
+    TorrentFileUpdateScenario,
+    TorrentInitialScenario,
+    TorrentKind,
+    UpdateProcessScenario,
+)
+
+
+def _download_source() -> ServerDownloadScenarios | None:
+    from ...core import launcher as _launcher
+
+    return _launcher.scenarios()
+
 
 TORRENT_VALIDATION_CACHE_KEY = "__torrent_validation__"
 
@@ -144,28 +158,52 @@ class VerifyWorker(WorkerBase):
         out_dir: str,
         dispatcher: EventDispatcher,
         overwrite_config: bool = False,
-        source=None,
+        scenarios: ServerDownloadScenarios | None = None,
+        source: object = None,
     ) -> None:
         super().__init__(out_dir, dispatcher)
         self._cache: dict[str, object] = load_cache()
         self.overwrite_config: bool = overwrite_config
-        self._source = source
+        self._scenarios = scenarios or (
+            source if isinstance(source, ServerDownloadScenarios) else None
+        )
         # Stamped by the controller per start_verify; stale generations
         # are dropped by _on_event so overlapping verifies can't flip
         # the footer back.
         self.verify_gen: int = 0
 
+    @property
+    def _active_scenarios(self) -> ServerDownloadScenarios:
+        if self._scenarios is None:
+            self._scenarios = _download_source()
+        if self._scenarios is None:
+            raise RuntimeError("No download source configured.")
+        return self._scenarios
+
+    def _verify_torrent_locator(
+        self, locator: str | None, fallback_reason: str
+    ) -> None:
+        if not locator:
+            self._handle_no_torrent(fallback_reason)
+            return
+        if not _torrent_available():
+            self._handle_no_torrent("libtorrent not available.")
+            return
+        if not self._torrent_verify(locator):
+            self._handle_no_torrent("Torrent verification unavailable.")
+
     def run(self) -> None:
         try:
-            self.progress(0.0, "Verifying…", phase="Verifying")
-            self.log("Verifying files...", "acct")
-            src = (
-                self._source
-                if self._source is not None
-                else _download_source()
+            scenarios = self._active_scenarios
+            # Manifest scenario owns its verdict — name the check for
+            # what it is instead of the generic torrent wording.
+            manifest = isinstance(scenarios.update, ManifestUpdateScenario)
+            self.progress(
+                0.0,
+                "Verifying manifest files…" if manifest else "Verifying…",
+                phase="Verifying manifest…" if manifest else "Verifying",
             )
-            if src is None:
-                raise RuntimeError("No download source configured.")
+            self.log("Verifying files...", "acct")
             cfg_wtf = os.path.join(self.out_dir, "WTF", "Config.wtf")
             if self.overwrite_config or not os.path.exists(cfg_wtf):
                 write_config_wtf(self.out_dir)
@@ -173,24 +211,24 @@ class VerifyWorker(WorkerBase):
             if self._cancel:
                 self._cancel_torrent_verify()
                 return
-            # Manifest overlay: server-owned files over the base client.
-            # Runs before/alongside torrent verify; posts TorrentDiffReady
-            # with manifest: paths so the update path is uniform.
             if self._manifest_verify():
                 return
-            # No torrent configured → fallback-only for first install.
-            if not src.torrent_locator:
-                self._handle_no_torrent("No BitTorrent source configured.")
-                return
-            if not _torrent_available():
-                self._handle_no_torrent("libtorrent not available.")
-                return
-            # Torrent path (offline verification, cache-aware).
-            if self._torrent_verify(src):
-                return
-            # _torrent_verify always returns True when it handled
-            # the verification (including error posts).
-            self._handle_no_torrent("Torrent verification unavailable.")
+            initial_loc = (
+                scenarios.initial.locator
+                if isinstance(scenarios.initial, TorrentInitialScenario)
+                else None
+            )
+            match scenarios.update:
+                case ManifestUpdateScenario():
+                    self._verify_torrent_locator(
+                        initial_loc, "No BitTorrent source configured."
+                    )
+                case TorrentFileUpdateScenario(torrent_url=loc):
+                    self._verify_torrent_locator(
+                        loc, "No BitTorrent source configured."
+                    )
+                case NoUpdateScenario(reason=reason):
+                    self._verify_torrent_locator(initial_loc, reason)
         except Exception as e:
             if self._cancel:
                 self._cancel_torrent_verify()
@@ -231,10 +269,7 @@ class VerifyWorker(WorkerBase):
             self._dispatcher.post(VerificationUpToDate())
         else:
             # First-install folder: fallback zip will handle it.
-            fallback = ""
-            src = self._source or _download_source()
-            if src is not None:
-                fallback = getattr(src, "fallback_url", "") or ""
+            fallback = self._scenarios.fallback_url if self._scenarios else ""
             if fallback:
                 self.log(
                     "First install — HTTP fallback zip available via UPDATE.",
@@ -247,8 +282,13 @@ class VerifyWorker(WorkerBase):
                 )
             self.progress(0.0, "", phase="Verified")
 
-    def _torrent_verify(self, src) -> bool:
-        if src is None or not src.torrent_locator:
+    def _torrent_verify(self, locator: str | object) -> bool:
+        loc = (
+            locator
+            if isinstance(locator, str)
+            else getattr(locator, "torrent_locator", "")
+        )
+        if not loc:
             return False
         if not _torrent_available():
             return False
@@ -275,7 +315,7 @@ class VerifyWorker(WorkerBase):
         if cache_matches:
             try:
                 snapshot = _fetch_torrent(
-                    src.torrent_locator,
+                    loc,
                     self.log,
                     cancel=lambda: self._cancel,
                 )
@@ -341,7 +381,7 @@ class VerifyWorker(WorkerBase):
                         stale = []
                     self._cache[TORRENT_VALIDATION_CACHE_KEY] = {
                         **identity,
-                        "url": src.torrent_locator,
+                        "url": loc,
                         "out_dir": os.path.abspath(self.out_dir),
                         "fingerprint": current_fp,
                         "stale": stale,
@@ -401,9 +441,9 @@ class VerifyWorker(WorkerBase):
                 "acct",
             )
             if snapshot is None:
-                stale = verifier.verify(src.torrent_locator)
+                stale = verifier.verify(loc)
             else:
-                stale = verifier.verify(src.torrent_locator, snapshot)
+                stale = verifier.verify(loc, snapshot)
         except TorrentCorruptError as e:
             return self._post_torrent_error(
                 TorrentCorrupt(message=str(e)),
@@ -460,7 +500,7 @@ class VerifyWorker(WorkerBase):
         identity = identity or {}
         self._cache[TORRENT_VALIDATION_CACHE_KEY] = {
             **identity,
-            "url": src.torrent_locator,
+            "url": loc,
             "out_dir": os.path.abspath(self.out_dir),
             "fingerprint": _folder_fingerprint(self.out_dir),
             "stale": sorted(stale),
@@ -639,14 +679,28 @@ class UpdateWorker(WorkerBase):
     """
 
     def __init__(
-        self, out_dir: str, dispatcher: EventDispatcher, source=None
+        self,
+        out_dir: str,
+        dispatcher: EventDispatcher,
+        scenarios: ServerDownloadScenarios | None = None,
+        source: object = None,
     ) -> None:
         super().__init__(out_dir, dispatcher)
         self._cache: dict[str, object] = load_cache()
-        self._source = source
+        self._scenarios = scenarios or (
+            source if isinstance(source, ServerDownloadScenarios) else None
+        )
         self._total: int = 0
         self._downloaded: int = 0
         self._counted: dict[str, int] = {}
+
+    @property
+    def _active_scenarios(self) -> ServerDownloadScenarios:
+        if self._scenarios is None:
+            self._scenarios = _download_source()
+        if self._scenarios is None:
+            raise RuntimeError("No download source configured.")
+        return self._scenarios
 
     def download(
         self, url: str, dest: str, size: object, name: str = ""
@@ -699,7 +753,9 @@ class UpdateWorker(WorkerBase):
         else:
             self.log("Could not read client version from WoW.exe", "dim")
 
-    def _recovery_download(self, wanted: set[str] | None = None) -> bool:
+    def _recovery_download(
+        self, wanted: set[str] | None = None, locator: str = ""
+    ) -> bool:
         from ..update_backend.torrent_update import (
             TorrentCorruptError,
             TorrentDownloader,
@@ -713,15 +769,22 @@ class UpdateWorker(WorkerBase):
             TorrentSessionError as TorrentSessionErrorExc,
         )
 
-        assert (
-            self._source is not None
-            and self._source.torrent_locator is not None
-        )
+        loc = locator
+        if not loc:
+            if self._scenarios and isinstance(
+                self._scenarios.initial, TorrentInitialScenario
+            ):
+                loc = self._scenarios.initial.locator
+            elif self._scenarios and isinstance(
+                self._scenarios.update, TorrentFileUpdateScenario
+            ):
+                loc = self._scenarios.update.torrent_url
+        assert bool(loc), "No torrent locator available for recovery download"
         dl = TorrentDownloader(self.out_dir, dispatcher=self._dispatcher)
         scope = "full client" if wanted is None else f"{len(wanted)} file(s)"
         self.log(f"[torrent] Starting recovery download ({scope}).", "acct")
         try:
-            dl.download(self._source.torrent_locator, wanted)
+            dl.download(loc, wanted)
         except TorrentCorruptError as e:
             self._recovery_failed(
                 e,
@@ -783,7 +846,7 @@ class UpdateWorker(WorkerBase):
                     "err",
                 )
                 try:
-                    dl.download(self._source.torrent_locator, None)
+                    dl.download(loc, None)
                 except (RuntimeError, OSError) as e:
                     self._recovery_failed(
                         e,
@@ -824,7 +887,7 @@ class UpdateWorker(WorkerBase):
         ) or {}
         self._cache[TORRENT_VALIDATION_CACHE_KEY] = {
             **identity,
-            "url": self._source.torrent_locator,
+            "url": loc,
             "out_dir": os.path.abspath(self.out_dir),
             "fingerprint": _folder_fingerprint(self.out_dir),
             "stale": [],
@@ -1159,68 +1222,10 @@ class UpdateWorker(WorkerBase):
         """Initial acquisition: full base-client download, once.
 
         Precondition: no playable client yet (the caller decides).
-        BitTorrent full download first, single-zip HTTP fallback second. No stale-set
-        logic, no incremental policy: this path always fetches the
-        whole base client.
+        Dispatches via the initial download scenario switch function.
         """
         try:
-            self._source = _download_source()
-            if self._source is None:
-                raise RuntimeError("No download source configured.")
-            from ...core import launcher as _launcher
-
-            _exe = _launcher.client_executable() or "WoW.exe"
-            fallback_url = getattr(self._source, "fallback_url", "") or ""
-            can_torrent = bool(
-                self._source.torrent_locator and _torrent_available()
-            )
-            if can_torrent:
-                self.progress(
-                    0.02,
-                    "Downloading via BitTorrent…",
-                    phase="BitTorrent",
-                    transport="BitTorrent",
-                )
-                self.log(
-                    "\nStarting BitTorrent client download…\n",
-                    "acct",
-                )
-                if self._recovery_download(None):
-                    return
-                if fallback_url:
-                    self.log(
-                        "[torrent] Torrent failed — trying HTTP fallback.",
-                        "err",
-                    )
-                    if self._http_fallback_download(fallback_url):
-                        return
-                    return
-                self._dispatcher.post(
-                    UpdateFailed(
-                        message="BitTorrent download failed",
-                        op="update",
-                    )
-                )
-                return
-            if fallback_url:
-                self.log(
-                    "[initial] No BitTorrent source — using HTTP "
-                    "fallback for first install.",
-                    "dim",
-                )
-                if self._http_fallback_download(fallback_url):
-                    return
-                return
-            self.log(
-                f"No download source for first install (no {_exe}).",
-                "err",
-            )
-            self._dispatcher.post(
-                UpdateFailed(
-                    message="No download source configured.",
-                    op="update",
-                )
-            )
+            dispatch_initial_download(self, self._active_scenarios.initial)
         except Exception as e:
             if self._cancel:
                 self._cancelled_abort()
@@ -1233,97 +1238,12 @@ class UpdateWorker(WorkerBase):
         """Incremental update: patch a playable client toward current.
 
         Precondition: a playable client exists (missing files are an
-        update decision, not an acquisition). Manifest-owned paths
-        download over HTTPS first; the torrent remainder follows only
-        when the torrent stage policy allows it. Manifest-only stale
-        sets complete without touching torrent.
+        update decision, not an acquisition). Dispatches via the
+        update process scenario switch function.
         """
         try:
-            self._source = _download_source()
-            if self._source is None:
-                raise RuntimeError("No download source configured.")
-            # Manifest overlay first (incremental/manifest stage):
-            # manifest: paths download over HTTPS from the manifest's
-            # own URLs. The remainder (if any) flows to the torrent
-            # stage below.
-            manifest_paths: set[str] = set()
-            torrent_paths: set[str] | None = set(wanted)
-            if wanted:
-                manifest_paths, torrent_paths = (
-                    _manifest_stage.split_manifest_paths(set(wanted))
-                )
-                if manifest_paths and not self._manifest_overlay_download(
-                    manifest_paths
-                ):
-                    return
-            if not torrent_paths and not manifest_paths:
-                self.log(
-                    "[torrent] No stale files; torrent update skipped.",
-                    "ok",
-                )
-                self.progress(1.0, "")
-                self._dispatcher.post(TorrentUpToDate())
-                return
-            if not torrent_paths:
-                # Manifest-only update — already applied above.
-                self._report_client_version()
-                self._dispatcher.post(
-                    UpdateCompleted(
-                        version=get_client_version(self.out_dir) or None
-                    )
-                )
-                return
-            from ...core import launcher as _launcher
-
-            cfg = _launcher.config()
-            # Incremental respects the torrent stage policy: a frozen
-            # flag (or magnet-only) leaves torrent-owned paths
-            # unpatched — the manifest channel is the only incremental
-            # path there.
-            torrent_allowed = _torrent_stage.torrent_allowed(cfg)
-            can_torrent = bool(
-                self._source.torrent_locator
-                and _torrent_available()
-                and torrent_allowed
-            )
-            if can_torrent:
-                self.progress(
-                    0.02,
-                    "Downloading via BitTorrent…",
-                    phase="BitTorrent",
-                    transport="BitTorrent",
-                )
-                self.log("\nStarting BitTorrent update…\n", "acct")
-                if self._recovery_download(torrent_paths):
-                    return
-                self._dispatcher.post(
-                    UpdateFailed(
-                        message="BitTorrent update failed",
-                        op="update",
-                    )
-                )
-                return
-            # No torrent path for incremental on an existing install —
-            # HTTP fallback is first-install only and never patches.
-            if torrent_allowed:
-                self.log(
-                    "Incremental update unavailable — BitTorrent "
-                    "source not configured or libtorrent missing "
-                    "(HTTP fallback is first-install only).",
-                    "err",
-                )
-            else:
-                self.log(
-                    "Incremental torrent update disabled for this "
-                    "source (magnet-only carries no updates) and no "
-                    "manifest covers these files.",
-                    "err",
-                )
-            self._dispatcher.post(
-                UpdateFailed(
-                    message=("BitTorrent unavailable for incremental update"),
-                    op="update",
-                )
+            dispatch_update_process(
+                self, self._active_scenarios.update, wanted
             )
         except Exception as e:
             if self._cancel:
@@ -1332,3 +1252,216 @@ class UpdateWorker(WorkerBase):
             self.log(f"\n✗  {e}", "err")
             self.progress(0.0, "")
             self._dispatcher.post(UpdateFailed(message=str(e), op="update"))
+
+
+def dispatch_initial_download(
+    worker: UpdateWorker, scenario: InitialDownloadScenario
+) -> bool:
+    """Switch function defining initial download scenarios.
+
+    Scenarios:
+    - Direct Download (HTTP fallback archive/folder)
+    - Torrent:
+      - Torrent File (HTTPS .torrent file -> full acquisition)
+      - Magnet (BitTorrent swarm metadata -> full acquisition)
+    """
+    match scenario:
+        case DirectDownloadScenario(url=url):
+            worker.log(
+                "[initial] No BitTorrent source — using HTTP "
+                "fallback for first install.",
+                "dim",
+            )
+            return worker._http_fallback_download(url)
+
+        case TorrentInitialScenario(
+            kind=TorrentKind.TORRENT_FILE, locator=loc, fallback_url=fb
+        ):
+            return _run_torrent_initial(worker, loc, fb)
+
+        case TorrentInitialScenario(
+            kind=TorrentKind.MAGNET, locator=loc, fallback_url=fb
+        ):
+            return _run_torrent_initial(worker, loc, fb)
+
+        case _:
+            return _initial_download_failed(worker)
+
+
+def _run_torrent_initial(
+    worker: UpdateWorker, locator: str, fallback_url: str | None
+) -> bool:
+    if _torrent_available():
+        worker.progress(
+            0.02,
+            "Downloading via BitTorrent…",
+            phase="BitTorrent",
+            transport="BitTorrent",
+        )
+        worker.log("\nStarting BitTorrent client download…\n", "acct")
+        if worker._recovery_download(None):
+            return True
+        if fallback_url:
+            worker.log(
+                "[torrent] Torrent failed — trying HTTP fallback.",
+                "err",
+            )
+            return worker._http_fallback_download(fallback_url)
+        worker._dispatcher.post(
+            UpdateFailed(
+                message="BitTorrent download failed",
+                op="update",
+            )
+        )
+        return False
+
+    if fallback_url:
+        worker.log(
+            "[initial] No BitTorrent source — using HTTP "
+            "fallback for first install.",
+            "dim",
+        )
+        return worker._http_fallback_download(fallback_url)
+
+    return _initial_download_failed(worker)
+
+
+def _initial_download_failed(worker: UpdateWorker) -> bool:
+    from ...core import launcher as _launcher
+
+    _exe = _launcher.client_executable() or "WoW.exe"
+    worker.log(f"No download source for first install (no {_exe}).", "err")
+    worker._dispatcher.post(
+        UpdateFailed(
+            message="No download source configured.",
+            op="update",
+        )
+    )
+    return False
+
+
+def _apply_manifest_overlay(
+    worker: UpdateWorker, wanted: set[str]
+) -> tuple[bool, set[str]]:
+    if not wanted:
+        return True, set()
+    manifest_paths, torrent_paths = _manifest_stage.split_manifest_paths(
+        set(wanted)
+    )
+    if manifest_paths and not worker._manifest_overlay_download(
+        manifest_paths
+    ):
+        return False, set()
+    return True, torrent_paths
+
+
+def _finish_update_paths(
+    worker: UpdateWorker, wanted: set[str], torrent_paths: set[str]
+) -> bool:
+    if not torrent_paths and not wanted:
+        worker.log(
+            "[torrent] No stale files; torrent update skipped.",
+            "ok",
+        )
+        worker.progress(1.0, "")
+        worker._dispatcher.post(TorrentUpToDate())
+        return True
+    if not torrent_paths:
+        worker._report_client_version()
+        worker._dispatcher.post(
+            UpdateCompleted(version=get_client_version(worker.out_dir) or None)
+        )
+        return True
+    return _run_torrent_incremental(worker, torrent_paths)
+
+
+def _run_torrent_incremental(
+    worker: UpdateWorker, torrent_paths: set[str]
+) -> bool:
+    from ...core import launcher as _launcher
+
+    cfg = _launcher.config()
+    torrent_allowed = _torrent_stage.torrent_allowed(cfg)
+    can_torrent = bool(_torrent_available() and torrent_allowed)
+    if can_torrent:
+        worker.progress(
+            0.02,
+            "Downloading via BitTorrent…",
+            phase="BitTorrent",
+            transport="BitTorrent",
+        )
+        worker.log("\nStarting BitTorrent update…\n", "acct")
+        if worker._recovery_download(torrent_paths):
+            return True
+        worker._dispatcher.post(
+            UpdateFailed(
+                message="BitTorrent update failed",
+                op="update",
+            )
+        )
+        return False
+    if torrent_allowed:
+        worker.log(
+            "Incremental update unavailable — BitTorrent "
+            "source not configured or libtorrent missing "
+            "(HTTP fallback is first-install only).",
+            "err",
+        )
+    else:
+        worker.log(
+            "Incremental torrent update disabled for this "
+            "source (magnet-only carries no updates) and no "
+            "manifest covers these files.",
+            "err",
+        )
+    worker._dispatcher.post(
+        UpdateFailed(
+            message="BitTorrent unavailable for incremental update",
+            op="update",
+        )
+    )
+    return False
+
+
+def dispatch_update_process(
+    worker: UpdateWorker,
+    scenario: UpdateProcessScenario,
+    wanted: set[str],
+) -> bool:
+    """Switch function defining update process scenarios.
+
+    Scenarios:
+    - Manifest based (HTTP manifest overlay per-file sync)
+    - Torrent file based (incremental BitTorrent update via .torrent file)
+    - No update (magnet-only or incremental disabled)
+    """
+    match scenario:
+        case ManifestUpdateScenario():
+            ok, torrent_paths = _apply_manifest_overlay(worker, wanted)
+            return (
+                _finish_update_paths(worker, wanted, torrent_paths)
+                if ok
+                else False
+            )
+
+        case TorrentFileUpdateScenario():
+            ok, torrent_paths = _apply_manifest_overlay(worker, wanted)
+            return (
+                _finish_update_paths(worker, wanted, torrent_paths)
+                if ok
+                else False
+            )
+
+        case NoUpdateScenario(reason=reason):
+            worker.log(
+                f"Incremental update unavailable: {reason} "
+                "(HTTP fallback is first-install only).",
+                "err",
+            )
+            worker._dispatcher.post(
+                UpdateFailed(
+                    message=f"Incremental update unavailable: {reason}",
+                    op="update",
+                )
+            )
+            return False

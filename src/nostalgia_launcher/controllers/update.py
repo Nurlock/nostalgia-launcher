@@ -15,6 +15,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from ..core import launcher
 from ..core.config_store import load_config, update_config
 from ..core.filesystem import (
     pick_game_executable,
@@ -27,12 +28,17 @@ from ..services.self_update import (
     fetch_updater_latest_tag,
     updater_update_available,
 )
+from ..services.update.scenarios import (
+    ManifestUpdateScenario,
+    ServerDownloadScenarios,
+    TorrentFileUpdateScenario,
+)
+from ..services.update.stages_manifest import split_manifest_paths
 from ..services.update.workflow import (
     UpdateWorker,
     VerifyWorker,
     torrent_recovery_available,
 )
-from ..services.update_backend.sources import _download_source
 from ..state.events import (
     ClientVersionReady,
     Event,
@@ -77,6 +83,18 @@ class Readiness:
     status: str
 
 
+def _verifying_status(scenarios: ServerDownloadScenarios | None) -> str:
+    """Pending or in-flight verify status line.
+
+    The manifest scenario owns its own verdict, so the footer says so
+    instead of the generic wording the torrent path uses."""
+    if scenarios is not None and isinstance(
+        scenarios.update, ManifestUpdateScenario
+    ):
+        return "Verifying manifest…"
+    return "Verifying…"
+
+
 def can_skip_verification(
     state,
     *,
@@ -106,10 +124,6 @@ def can_skip_verification(
 # Cap on captured child-process (umu/Wine, WoW.exe) lines per run — a chatty
 # Wine session must not flood the session buffer, the log file and the UI.
 _CHILD_OUTPUT_MAX_LINES = 800
-
-
-def _fallback_available(source: object) -> bool:
-    return bool(source is not None and getattr(source, "fallback_url", ""))
 
 
 def _launch_warp_key(launch: dict) -> str:
@@ -216,21 +230,21 @@ class UpdateController:
         self.state.torrent_stale = None
         self.state.running = True
         self._op = "verify"
-        self.state.status = "Verifying…"
+        scen = launcher.scenarios()
+        self.state.status = _verifying_status(scen)
         self._verify_gen += 1
         gen = self._verify_gen
-        from ..services.update_backend.sources import _download_source
 
         worker = VerifyWorker(
             out,
             self._dispatcher,
             overwrite_config=overwrite_config,
-            source=_download_source(),
+            scenarios=scen,
         )
         worker.verify_gen = gen
         self._verify_worker = worker
         threading.Thread(target=worker.run, daemon=True).start()
-        self._dispatcher.post(StatusChanged("Verifying…"))
+        self._dispatcher.post(StatusChanged(self.state.status))
         self._dispatcher.post(ProgressChanged(0.0, ""))
 
     def start_update(self):
@@ -306,12 +320,11 @@ class UpdateController:
         self.state.running = True
         self._op = "update"
         self.state.status = "Updating…"
-        from ..services.update_backend.sources import _download_source
 
         worker = UpdateWorker(
             out,
             self._dispatcher,
-            source=_download_source(),
+            scenarios=launcher.scenarios(),
         )
         # Incremental path only: initial acquisition goes through
         # start_client_download (run_initial). A stale set here means
@@ -346,11 +359,9 @@ class UpdateController:
                 LogMessage("✗  Please set the game folder first.\n", "err")
             )
             return False
-        # run_initial is torrent-first/fallback-second; the gate must
-        # match so an HTTP-only server still reaches first install.
-        src = _download_source()
-        fallback = _fallback_available(src)
-        if not (torrent_recovery_available() or fallback):
+
+        scenarios = launcher.scenarios()
+        if scenarios is None or scenarios.initial is None:
             self._dispatcher.post(
                 LogMessage(
                     "✗  This server has no download source configured — "
@@ -368,7 +379,7 @@ class UpdateController:
         worker = UpdateWorker(
             out,
             self._dispatcher,
-            source=src if src is not None else _download_source(),
+            scenarios=scenarios,
         )
         self._worker = worker
         threading.Thread(target=worker.run_initial, daemon=True).start()
@@ -1067,9 +1078,17 @@ class UpdateController:
             and self.state.torrent_error is None
             and not self.state.client_ready
         ):
-            from ..core import launcher as _launcher_v
-
-            _vcfg = _launcher_v.config()
+            _scen = launcher.scenarios()
+            if _scen is not None and isinstance(
+                _scen.update, ManifestUpdateScenario
+            ):
+                # Manifest owns the verdict — never the torrent gate.
+                if not self._playable_client_present():
+                    return Readiness(
+                        "disabled", "UPDATE", _verifying_status(_scen)
+                    )
+                return Readiness("disabled", "PLAY", _verifying_status(_scen))
+            _vcfg = launcher.config()
             _torrent_only = bool(_vcfg and _vcfg.has_torrent())
             if _torrent_only:
                 # Respect torrent.update flag; magnet-only first-time-only
@@ -1084,19 +1103,10 @@ class UpdateController:
             # first-time-only: a magnet's content is immutable, so the
             # manifest is the only incremental channel). The
             # torrent.update flag gates torrent-owned paths only.
-            from ..core import launcher as _launcher_cfg
-
-            _cfg = _launcher_cfg.config()
-            _manifest_stale = [
-                p
-                for p in self.state.torrent_stale
-                if p.startswith("manifest:")
-            ]
-            _torrent_stale = [
-                p
-                for p in self.state.torrent_stale
-                if not p.startswith("manifest:")
-            ]
+            _cfg = launcher.config()
+            _manifest_stale, _torrent_stale = split_manifest_paths(
+                set(self.state.torrent_stale)
+            )
             if _manifest_stale:
                 n = len(_manifest_stale)
                 return Readiness(
@@ -1279,6 +1289,19 @@ class UpdateController:
         if cfg is not None and cfg.download_manifest:
             return True
         return not self._playable_client_present()
+
+    def update_via(self) -> str:
+        """Active incremental channel for the views: "manifest",
+        "torrent", or "" when no update scenario resolves. Lets the
+        UPDATE tab speak manifest instead of torrent wording."""
+        scen = launcher.scenarios()
+        if scen is None:
+            return ""
+        if isinstance(scen.update, ManifestUpdateScenario):
+            return "manifest"
+        if isinstance(scen.update, TorrentFileUpdateScenario):
+            return "torrent"
+        return ""
 
     def _on_done(self, event: UpdateCompleted):
         if event.version:

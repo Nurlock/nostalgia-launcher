@@ -296,8 +296,6 @@ a stage module:
 | Stage | Module | Briefing layer | Role |
 |---|---|---|---|
 | Ownership | `ownership.py` | guardrail | server-base vs community-overlay registry: torrent paths + manifest entries are server-owned (authoritative, win collisions with a logged warning); mod/asset `installed_files`, `dlls.txt`, `Interface/` are user-owned (server syncs refuse writes there). Network-free (cached manifest snapshot + state records). |
-| Initial | `stages_initial.py` | Server Base (Initial) | one-off acquisition: `has_playable_client()` (`has_exe` + external launchers), `fallback_available()`. No rechecks. |
-| Static | `stages_static.py` | Server Incremental (Static) | server-declared bundled entries (`manifest-` registry ids) via fixed URLs. Additions/updates only, never deletes. |
 | Manifest | `stages_manifest.py` | Server Incremental (Manifest) | overlay path split/tag (`manifest:` namespace); additions only, never deletes. |
 | Torrent | `stages_torrent.py` | Server Incremental (Torrent) | base-client folder recheck + selective download; `torrent_allowed()` policy. Ignores extra on-disk files — never deletes user content. |
 
@@ -373,9 +371,9 @@ backends) stays decoupled — it never runs inside verify/update workers.
   enabled UPDATE button when `torrent_recovery_available()`
   (`LauncherConfig.has_torrent()` + libtorrent present,
   network-free) and the client isn't known-ready.
-- Download-source probing lives in `update_backend/sources.py`
-  (`DownloadSource`/`_download_source`, re-exported by `http_update` so
-  controllers/tests keep importing from there).
+- Download scenarios and probing live in `services/update/scenarios.py`
+  (`ServerDownloadScenarios`, resolved via `launcher.scenarios()`) and
+  `update_backend/sources.py` (`DownloadSource`/`_download_source` aliased to it).
 - **Readiness for torrent-only is disabled till verification**: `compute_readiness`
   returns disabled `Verifying…` while torrent validation has no verdict
   (`torrent_stale/reachable/error` all None). The verdict is cached by

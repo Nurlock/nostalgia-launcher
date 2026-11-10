@@ -52,9 +52,10 @@ flowchart TD
 | Piece | File | Role |
 |---|---|---|
 | `VerifyWorker` / `UpdateWorker` | `services/update/workflow.py` | Orchestrator facade: `VerifyWorker.run()` verifies; `UpdateWorker` splits into `run_initial()` (one-off full acquisition — BitTorrent full, then single-zip HTTP fallback) and `run_incremental(wanted)` (manifest HTTPS first, torrent selective second). `run()` keeps the legacy signature and dispatches by stage for API stability. |
-| `ownership` / `stages_*` | `services/update/ownership.py`, `stages_initial/static/manifest/torrent.py` | Stage logic: ownership guardrail, initial acquisition, static/manifest/torrent incremental |
+| `ownership` / `stages_*` | `services/update/ownership.py`, `stages_manifest/torrent.py` | Stage logic: ownership guardrail, manifest/torrent incremental |
 | `services/manifest.py` | `services/manifest.py` | server-agnostic manifest overlay: fetch/parse/route/bundled entries (`manifest:`-prefixed stale paths) |
-| `DownloadSource` / `_download_source()` | `services/update_backend/sources.py` | Resolve `torrent_url` / `magnet` / `fallback_url` from `server.download` |
+| `scenarios` / `ServerDownloadScenarios` | `services/update/scenarios.py` | Typed scenarios for initial download (Direct Download vs Torrent file/Magnet) and update process (Manifest vs Torrent file) |
+| `DownloadSource` / `_download_source()` | `services/update_backend/sources.py` | Alias to `ServerDownloadScenarios` / `launcher.scenarios()` |
 | `UpdateController` | `controllers/update.py` | Lifecycle owner; `_on_event` mutates `UpdateState`; `compute_readiness()` drives footer |
 | `ControllerBridge` | `ui/bridge.py` | Drains `EventDispatcher` every 50 ms → Qt signals |
 | Events | `state/events.py` | Typed dataclasses (`TorrentDiffReady`, `TorrentUpToDate`, `UpdateCompleted`, …) |
@@ -80,17 +81,23 @@ stale; present with a non-empty `sha256` → stale on size mismatch (no
 hash I/O) or sha256 mismatch; empty-sha entries keep
 existence-only staleness. The version cursor is informational only.
 
-## 2. Source resolution
+## 2. Scenario & source resolution
 
-`_download_source()` → `DownloadSource(torrent_url, fallback_url, magnet)`:
+Scenarios are parsed from `server.json` via `resolve_server_scenarios(cfg)` (`services/update/scenarios.py`):
 
-- `torrent_locator = torrent_url or magnet`.
-- `has_torrent() = bool(torrent_url or magnet)`.
-- `torrent_update_allowed()`: explicit `torrent.update` wins; else inferred
-  as `bool(torrent_url)` — **magnet-only defaults to first-time-only**
-  (magnet content is immutable once published — info-hash addressed —
-  so it cannot carry updates; only a refreshed `torrent_url` can),
-  `torrent_url` defaults to updatable.
+1. **Initial download scenario (`initial`)**:
+   - `DirectDownloadScenario(url)`: `server.download.http.fallback` present without torrent.
+   - `TorrentInitialScenario(kind, locator, fallback_url)`: `kind` is either `TorrentKind.TORRENT_FILE` (wins if `torrent_url` provided) or `TorrentKind.MAGNET`. Holds optional single-zip HTTP fallback.
+   - `None`: no initial download source declared.
+
+2. **Update process scenario (`update`)**:
+   - `ManifestUpdateScenario(url)`: `server.download.manifest.url` present.
+   - `TorrentFileUpdateScenario(torrent_url)`: `torrent_url` present and `torrent.update` allowed (explicit true or omitted for torrent files).
+   - `NoUpdateScenario(reason)`: no update mechanism available (e.g. magnet-only without manifest, or no update source). Magnets are immutable and never used for incremental updates.
+
+The execution workflow uses two explicit pattern-matching dispatch functions (`workflow.py`):
+- `dispatch_initial_download(worker, scenario)`: switches on `DirectDownloadScenario` vs `TorrentInitialScenario(kind=TorrentKind.TORRENT_FILE)` vs `TorrentInitialScenario(kind=TorrentKind.MAGNET)` vs None.
+- `dispatch_update_process(worker, scenario, wanted)`: switches on `ManifestUpdateScenario` vs `TorrentFileUpdateScenario` vs `NoUpdateScenario`.
 
 ## 3. Verify (`VerifyWorker.run`)
 

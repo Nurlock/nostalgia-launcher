@@ -495,6 +495,7 @@ class UpdateViewState(QObject):
     statsChanged = Signal()
     primaryChanged = Signal()
     updateTabChanged = Signal()
+    updateViaChanged = Signal()
     filesChanged = Signal()
     realmChanged = Signal()
 
@@ -511,6 +512,7 @@ class UpdateViewState(QObject):
         self._primary_label = "UPDATE"
         self._primary_enabled = True
         self._update_tab_enabled = True
+        self._update_via = ""
         self._files = UpdateFilesModel(self)
         self._on_primary = None
         self._on_recheck = None
@@ -646,6 +648,18 @@ class UpdateViewState(QObject):
             self._update_tab_enabled = bool(enabled)
             self.updateTabChanged.emit()
 
+    def _get_update_via(self) -> str:
+        return self._update_via
+
+    updateVia = Property(str, _get_update_via, notify=updateViaChanged)
+
+    def set_update_via(self, via: str):
+        """Incremental channel from the controller ("manifest"/"torrent")."""
+        value = str(via or "")
+        if value != self._update_via:
+            self._update_via = value
+            self.updateViaChanged.emit()
+
     # ── event intake (mirrors UpdatePanel) ──────────────────────────
 
     def on_progress(self, event):
@@ -691,6 +705,9 @@ class UpdateViewState(QObject):
         if text == "Verifying…":
             self._set_phase(text)
             self._set_file("Verifying client files…")
+        elif text == "Verifying manifest…":
+            self._set_phase(text)
+            self._set_file("Verifying manifest files…")
         elif text == "Updating…":
             self._set_phase(text)
             self._set_file("Preparing client update…")

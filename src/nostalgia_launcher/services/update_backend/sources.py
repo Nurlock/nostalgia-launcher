@@ -1,40 +1,21 @@
-"""Download-source resolution for the client update backends.
+"""Download scenarios resolution for the client update backends.
 
-The active `DownloadSource` is now derived solely from the server's
-``server.download`` block (no mirror failover): the optional HTTP
-fallback (single zip) and the optional BitTorrent ``torrent_url`` /
-``magnet``. Kept separate from the worker engines so both
-`VerifyWorker` and `UpdateWorker` share one definition; the workers
-re-export these names through `services.update.workflow`.
+The server configuration JSON (`server.download`) is the source of truth.
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
 
+from ...core import launcher
 from ...core.log_sink import debug_emit
+from ..update.scenarios import (
+    DownloadSource,
+    ServerDownloadScenarios,
+    resolve_server_scenarios,
+)
 
 
-@dataclass(frozen=True)
-class DownloadSource:
-    """The resolved endpoints of the active download source (torrent
-    primary, HTTP fallback)."""
-
-    torrent_url: str | None = None
-    fallback_url: str = ""
-    # Server-only alternative to torrent_url
-    torrent_magnet: str | None = None
-
-    @property
-    def torrent_locator(self) -> "str | None":
-        return self.torrent_url or self.torrent_magnet
-
-
-def _download_source() -> "DownloadSource | None":
-    """Resolve the active download source from the server's ``download`` block.
-
-    Returns None when the launcher configuration is missing.
-    A torrent-only source (no HTTP endpoints) is a valid download source."""
-    from ...core import launcher
-
+def _download_source() -> ServerDownloadScenarios | None:
+    """Resolve the active scenarios from launcher config (server.json)."""
     cfg = launcher.config()
     if cfg is None:
         return None
@@ -43,8 +24,7 @@ def _download_source() -> "DownloadSource | None":
         f"(torrent={'yes' if cfg.download_torrent_url else 'no'}, "
         f"magnet={'yes' if cfg.download_torrent_magnet else 'no'})"
     )
-    return DownloadSource(
-        cfg.download_torrent_url,
-        cfg.download_fallback_url or "",
-        cfg.download_torrent_magnet,
-    )
+    return resolve_server_scenarios(cfg)
+
+
+__all__ = ["DownloadSource", "ServerDownloadScenarios", "_download_source"]

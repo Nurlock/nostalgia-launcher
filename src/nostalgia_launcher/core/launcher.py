@@ -108,7 +108,11 @@ import os
 import sys
 import threading
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlsplit
+
+if TYPE_CHECKING:
+    from ..services.update.scenarios import ServerDownloadScenarios
 
 from .filesystem import atomic_write_text
 from .helpers import redact_url
@@ -213,6 +217,13 @@ class LauncherConfig:
         if self.download_torrent_update is not None:
             return bool(self.download_torrent_update)
         return bool(self.download_torrent_url)
+
+    @property
+    def scenarios(self) -> "ServerDownloadScenarios":
+        """The resolved client acquisition and update scenarios."""
+        from ..services.update.scenarios import resolve_server_scenarios
+
+        return resolve_server_scenarios(self)
 
 
 # Base set of git hosts allowlisted for addon installations. A configuration
@@ -938,6 +949,12 @@ def reset():
 def config() -> "LauncherConfig | None":
     with _LOCK:
         return _config
+
+
+def scenarios() -> "ServerDownloadScenarios | None":
+    """The active server's download and update scenarios, or None."""
+    cfg = config()
+    return cfg.scenarios if cfg is not None else None
 
 
 def config_error() -> str:

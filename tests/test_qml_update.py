@@ -254,6 +254,18 @@ def test_status_intake(state):
     assert state.property("fileText") == "Preparing client update…"
 
 
+def test_status_intake_manifest(state):
+    state.on_status("Verifying manifest…")
+    assert state.property("phaseText") == "Verifying manifest…"
+    assert state.property("fileText") == "Verifying manifest files…"
+
+
+def test_update_via_property(state):
+    assert state.property("updateVia") == ""
+    state.set_update_via("manifest")
+    assert state.property("updateVia") == "manifest"
+
+
 # ── finish matrix ─────────────────────────────────────────────────────
 
 

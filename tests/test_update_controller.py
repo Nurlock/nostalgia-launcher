@@ -2190,6 +2190,68 @@ def test_update_tab_stays_visible_with_manifest_overlay(
     assert controller.update_tab_enabled() is True
 
 
+def test_readiness_manifest_scenario_shows_manifest_status(
+    controller, controller_cfg, monkeypatch, tmp_path
+):
+    """Installed client + manifest update scenario: the pre-verdict
+    footer focuses on the manifest check — never the torrent gate."""
+    from nostalgia_launcher.core import launcher
+
+    game = tmp_path / "game"
+    game.mkdir(exist_ok=True)
+    (game / "WoW.exe").write_text("")
+    controller_cfg["out_dir"] = str(game)
+    cfg = launcher.config()
+    assert cfg is not None
+    monkeypatch.setattr(
+        cfg,
+        "download_manifest",
+        {"url": "https://srv.example/manifest.json"},
+        raising=False,
+    )
+    r = controller.compute_readiness()
+    assert (r.mode, r.label) == ("disabled", "PLAY")
+    assert r.status == "Verifying manifest…"
+    # No playable exe yet: same manifest gate, UPDATE offer.
+    controller_cfg["out_dir"] = str(tmp_path / "empty")
+    r = controller.compute_readiness()
+    assert (r.mode, r.label) == ("disabled", "UPDATE")
+    assert r.status == "Verifying manifest…"
+
+
+def test_update_via_reflects_update_scenario(
+    controller, controller_cfg, monkeypatch
+):
+    from nostalgia_launcher.core import launcher
+
+    assert controller.update_via() == "torrent"
+    monkeypatch.setattr(
+        launcher.config(),
+        "download_manifest",
+        {"url": "https://srv.example/manifest.json"},
+        raising=False,
+    )
+    assert controller.update_via() == "manifest"
+
+
+def test_start_verify_manifest_status(
+    controller, worker_cls, controller_cfg, monkeypatch
+):
+    from nostalgia_launcher.core import launcher
+
+    monkeypatch.setattr(
+        launcher.config(),
+        "download_manifest",
+        {"url": "https://srv.example/manifest.json"},
+        raising=False,
+    )
+    controller.start_verify()
+    events = controller._dispatcher.drain()
+    assert StatusChanged("Verifying manifest…") in events
+    assert StatusChanged("Verifying…") not in events
+    assert controller.state.status == "Verifying manifest…"
+
+
 def test_manifest_stale_updatable_when_torrent_frozen(
     controller, controller_cfg, monkeypatch
 ):
